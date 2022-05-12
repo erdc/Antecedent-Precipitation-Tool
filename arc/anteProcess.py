@@ -89,6 +89,7 @@ try:
     from . import get_all
     from .utilities import JLog
     from .utilities import web_wimp_scraper
+    from . import netcdf_parse_all
 except Exception:
     import query_climdiv
     import process_manager
@@ -111,6 +112,7 @@ except Exception:
         sys.path.append(UTILITIES_FOLDER)
     import JLog
     import web_wimp_scraper
+    import netcdf_parse_all
 
 
 
@@ -999,14 +1001,18 @@ class Main(object):
 
     def createFinalDF(self):
         # Start to Build Stations Table (continues during iteration below)
-        station_table_column_labels =[["Weather Station Name",
-                                       "Coordinates",
-                                       "Elevation (ft)",
-                                       "Distance (mi)",
-                                       r"Elevation $\Delta$",
-                                       r"Weighted $\Delta$",
-                                       "Days Normal",
-                                       "Days Antecedent"]]
+        if self.grid is False:
+            station_table_column_labels =[["Weather Station Name",
+                                           "Coordinates",
+                                           "Elevation (ft)",
+                                           "Distance (mi)",
+                                           r"Elevation $\Delta$",
+                                           r"Weighted $\Delta$",
+                                           "Days Normal",
+                                           "Days Antecedent"]]
+        if self.grid is True:
+            station_table_column_labels =[["",
+                                           "Station Count Summary"]]
 
         # JLG commented this out
         # station_table_values = [["Weather Station Name", "Coordinates", "Elevation (ft)", "Distance (mi)",
@@ -1248,30 +1254,30 @@ class Main(object):
         elif self.grid is True:
             # Grid Section
             num_stations_used = 0
-            if self.cdf_instance is None:
-                import netcdf_parse_all
-                self.cdf_instance = netcdf_parse_all.get_point_history(float(self.site_lat), float(self.site_long))
-                self.cdf_instance()
-                self.gridFolderPath = os.path.join(self.folderPath, "Grid Data")
-                if os.path.isdir(self.gridFolderPath) == True:
-                    pass
-                else:
-                    os.mkdir(self.gridFolderPath)
-                # Save entire TS to CSV in output directory
-                try:
-                    outputName = '({}, {}) Complete AlphaGrid PRCP.csv'.format(self.cdf_instance.closest_lat, self.cdf_instance.closest_lon)
-                    outputName = os.path.join(self.gridFolderPath, outputName)
-                    if os.path.isfile(outputName) is True:
-                        os.remove(outputName)
-                        time.sleep(1)
-                    self.log.Wrap('Saving Complete AlphaGrid PRCP data to CSV in output folder...')
-                    self.cdf_instance.entire_ts.to_csv(outputName)
-                except Exception as F:
-                    self.log.Wrap(str(F))
-            self.log.Wrap('Entire TimeSeries rows = {}'.format(self.cdf_instance.entire_ts.count()))
-            self.finalDF = self.cdf_instance.entire_ts[self.dates.normal_period_data_start_date:self.dates.actual_data_end_date]
+            # if self.cdf_instance is None:
+            self.cdf_instance = netcdf_parse_all.get_point_history(float(self.site_lat), float(self.site_long))
+            self.cdf_instance()
+            self.gridFolderPath = os.path.join(self.folderPath, "Grid Data")
+            if os.path.isdir(self.gridFolderPath) == True:
+                pass
+            else:
+                os.mkdir(self.gridFolderPath)
+            # Save entire TS to CSV in output directory
+            try:
+                outputName = '({}, {}) Complete AlphaGrid PRCP.csv'.format(self.site_lat, self.site_long)
+                outputName = os.path.join(self.gridFolderPath, outputName)
+                if os.path.isfile(outputName) is True:
+                    os.remove(outputName)
+                    time.sleep(1)
+                self.log.Wrap('Saving Complete AlphaGrid PRCP data to CSV in output folder...')
+                pandas.concat([self.cdf_instance.entire_precip_ts, self.cdf_instance.entire_station_count_ts], axis=1).to_csv(outputName, header=False)
+                # self.cdf_instance.entire_precip_ts.to_csv(outputName)
+            except Exception as F:
+                self.log.Wrap(str(F))
+            self.log.Wrap('Entire TimeSeries rows = {}'.format(self.cdf_instance.entire_precip_ts.count()))
+            self.finalDF = self.cdf_instance.entire_precip_ts[self.dates.normal_period_data_start_date:self.dates.actual_data_end_date]
             self.log.Wrap('FinalDF rows = {}'.format(self.finalDF.count()))
-            currentValues = self.cdf_instance.entire_ts[self.dates.antecedent_period_start_date:self.dates.current_water_year_end_date]
+            currentValues = self.cdf_instance.entire_precip_ts[self.dates.antecedent_period_start_date:self.dates.current_water_year_end_date]
             self.log.Wrap('Current year rows = {}'.format(currentValues.count()))
             # convert the data into inches
             units = 'in'
@@ -1281,6 +1287,27 @@ class Main(object):
                 if self.finalDF is not None:
                     self.finalDF = self.finalDF * 0.03937008
                     self.log.Wrap('self.finalDF conversion complete.')
+            station_count_data = numpy.float64(self.cdf_instance.entire_station_count_ts[self.dates.normal_period_data_start_date:self.dates.actual_data_end_date])
+            dump_path_file = open(os.path.join(self.gridFolderPath, "Pickle_dump"),'wb')
+            pickle.dump(self.cdf_instance.entire_station_count_ts, dump_path_file)
+            dump_path_file.close()
+            del(dump_path_file)
+            vals = []
+            vals.append("Minimum count of weather stations within 30 miles")
+            vals.append(int(round(station_count_data.min(),0)))
+            station_table_values.append(vals)
+            vals = []
+            vals.append("Mean count of weather stations within 30 miles")
+            vals.append(int(round(station_count_data.mean(),0)))
+            station_table_values.append(vals)
+            vals = []
+            vals.append("Median count of weather stations within 30 miles")
+            vals.append(int(round(numpy.median(station_count_data),0)))
+            station_table_values.append(vals)
+            vals = []
+            vals.append("Maximum count of weathers stations within 30 miles")
+            vals.append(int(round(station_count_data.max(),0)))
+            station_table_values.append(vals)
             # BUILD STATIONS TABLE
             # x = 1
             #row_labels3.append(row_options[0])
@@ -1661,11 +1688,11 @@ class Main(object):
             # Add Logo
             try:
                 images_folder = os.path.join(ROOT, 'images')
-                logo_file = os.path.join(images_folder, 'RD_1_0.png')
+                logo_file = os.path.join(images_folder, 'RD_2_0.png')
                 logo = plt.imread(logo_file)
             except:
                 images_folder = os.path.join(sys.prefix, 'images')
-                logo_file = os.path.join(images_folder, 'RD_1_0.png')
+                logo_file = os.path.join(images_folder, 'RD_2_0.png')
                 logo = plt.imread(logo_file)
             img = fig.figimage(X=logo, xo=118, yo=8)
 
@@ -1840,6 +1867,22 @@ class Main(object):
                 stations_table.auto_set_font_size(False)
                 stations_table.set_fontsize(10)
 
+            # Plot station count data from GHCN gridded dataset
+            if self.grid is True:
+                station_table_colors = [[light_grey, light_grey]]
+                for row in station_table_values[:]:
+                    station_table_colors.append([white, white])
+
+                # combine the station table headers and values after sorting by distance from the location of interest
+                station_table_values = station_table_column_labels + station_table_values
+
+                stations_table = ax4.table(cellText=station_table_values,
+                                           cellColours=station_table_colors,
+                                           colWidths=[0.4, 0.3],
+                                           loc='center')
+                stations_table.auto_set_font_size(False)
+                stations_table.set_fontsize(10)
+
             # Determine bottom separation value by table rows
             if num_stations_used < 4:
                 bValue = 0.01
@@ -2000,13 +2043,13 @@ if __name__ == '__main__':
     INPUT_LIST = [['PRCP',
                   '33.2098',
                   '-87.5692',
-                  2019,
-                  1,
+                  2021,
+                  10,
                   15,
                   None,
                   None,
                   SAVE_FOLDER,
                   False]]
     for i in INPUT_LIST:
-        INSTANCE.setInputs(i, watershed_analysis=False, all_sampling_coordinates=None, grid=False)
+        INSTANCE.setInputs(i, watershed_analysis=False, all_sampling_coordinates=None, grid=True)
     input('Stall for debugging.  Press enter or click X to close')

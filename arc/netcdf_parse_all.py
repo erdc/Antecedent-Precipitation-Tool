@@ -149,15 +149,14 @@ def get_closest_coordinates_numpy(dataset, lat0, lon0):
         n += 1
     return closest_lat, lat_index, closest_lon, lon_index
 
-def get_nc_files():
+def get_nc_files(netcdf_folder, pre_length, post_length):
     # netcdf_folder = r'\\coe-spknv001sac.spk.ds.usace.army.mil\EGIS_GEOMATICS\Regulatory\BaseData\Climatology\nclimdivd\nclimdivd-alpha-nc'
-    netcdf_folder = r'D:\2020_APT_SON\Gridded_Rainfall'
     nc_dates_and_files = []
     for root, directories, file_names in os.walk(netcdf_folder):
         for file_name in file_names:
-            pre = file_name[:5]
-            post = file_name[11:]
-            date = file_name[5:11]
+            pre = file_name[:pre_length]
+            post = file_name[post_length:]
+            date = file_name[pre_length:post_length]
             file_path = os.path.join(root, file_name)
             nc_dates_and_files.append([date, file_path])
             # if pre == 'prcp-':
@@ -165,10 +164,10 @@ def get_nc_files():
             #         file_path = os.path.join(root, file_name)
             #         nc_dates_and_files.append([date, file_path])
     nc_dates_and_files.sort(key=lambda x: x[0], reverse=False)
-    nc_files = []
-    for nc_date_and_file in nc_dates_and_files:
-        nc_files.append(nc_date_and_file[1])
-    return nc_files
+    # nc_files = []
+    # for nc_date_and_file in nc_dates_and_files:
+    #     nc_files.append(nc_date_and_file[1])
+    return nc_dates_and_files
 
 class get_point_history(object):
 
@@ -184,21 +183,25 @@ class get_point_history(object):
         self.prcp_data = []
         self.timestamps = []
         self.prcp_values = []
+        self.station_count_values = []
         self.total_rows = 0
         self.blank_rows = 0
         self.data_rows = 0
-        self.entire_ts = None
+        self.entire_precip_ts = None
+        self.entire_station_count_ts = None
 
     def __call__(self):
         print('Getting complete PRCP history for ({}, {})...'.format(self.lat, self.lon))
-        self.nc_files = get_nc_files()
+        netcdf_precip_folder = r'D:\2020_APT_SON\Gridded_Rainfall'
+        netcdf_station_count_folder = r'D:\2020_APT_SON\Gridded_Rainfall_Station_Counts'
+        self.nc_files = get_nc_files(netcdf_precip_folder,5,11)
         num_datasets = len(self.nc_files)
         current_dataset = 0
         for nc_file in self.nc_files:
             current_dataset += 1
             try:
                 # Open dataset and get variables / basic info
-                dataset = netCDF4.Dataset(nc_file, 'r')
+                dataset = netCDF4.Dataset(nc_file[1], 'r')
                 prcp = dataset.variables['prcp']
                 timevar = dataset.variables['time']
                 timeunits = timevar.units
@@ -234,14 +237,27 @@ class get_point_history(object):
                 print(str(F))
                 print('----------')
                 print('----EXCEPTION!!!------')
+            # Open dataset and get variables / basic info
+            station_count_nc_file = os.path.join(netcdf_station_count_folder,"ncddsupp-{0}-obcounts.nc".format(nc_file[0]))
+            dataset = netCDF4.Dataset(station_count_nc_file, 'r')
+            station_count = dataset.variables['cntp']
+            # Collect/print/write relevant values
+            for x_time in range(len(times)):
+                station_count_val = station_count[x_time, self.lat_index, self.lon_index]
+                self.station_count_values.append(station_count_val)
+
         print('----------')
         print('')
         print('All datasets processed.')
         # Convert to pandas dataframe
         print('Converting data to TimeSeries format...')
-        self.entire_ts = pandas.Series(data=self.prcp_values,
+        self.entire_precip_ts = pandas.Series(data=self.prcp_values,
                                        index=self.timestamps,
-                                       dtype="object",
+                                       dtype="float64",
+                                       name='value')
+        self.entire_station_count_ts = pandas.Series(data=self.station_count_values,
+                                       index=self.timestamps,
+                                       dtype="float64",
                                        name='value')
         print('Conversion complete.')
         # Print and log summary stats
@@ -271,4 +287,4 @@ if __name__ == '__main__':
         instance = get_point_history(COORDS[0], COORDS[1])
         instance()
         list_of_instances.append(instance)
-    raw_input("STALLING...")
+    input("STALLING...")
