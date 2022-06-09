@@ -873,7 +873,7 @@ class Main(object):
                                                                                                       month=self.dates.observation_month,
                                                                                                       pdsidv_file=self.pdsidv_file)
                 # Querying WebWIMP to collect Wet / Dry season info...'
-                self.wimp_scraper.get_season(lat=float(self.site_lat),
+                wet_dry_season_result = self.wimp_scraper.get_season(lat=float(self.site_lat),
                                              lon=float(self.site_long),
                                              month=int(self.dates.observation_month),
                                              output_folder=self.folderPath,
@@ -1264,12 +1264,12 @@ class Main(object):
                 os.mkdir(self.gridFolderPath)
             # Save entire TS to CSV in output directory
             try:
-                outputName = '({}, {}) Complete AlphaGrid PRCP.csv'.format(self.site_lat, self.site_long)
+                outputName = 'gridded_data_{0}-{1}-{2}.csv'.format(self.dates.observation_date.year, self.dates.observation_date.month, self.dates.observation_date.day)
                 outputName = os.path.join(self.gridFolderPath, outputName)
                 if os.path.isfile(outputName) is True:
                     os.remove(outputName)
                     time.sleep(1)
-                self.log.Wrap('Saving Complete AlphaGrid PRCP data to CSV in output folder...')
+                self.log.Wrap('Saving complete gridded precipitation time series to CSV in output folder...')
                 pandas.concat([self.cdf_instance.entire_precip_ts, self.cdf_instance.entire_station_count_ts], axis=1).to_csv(outputName, header=False)
                 # self.cdf_instance.entire_precip_ts.to_csv(outputName)
             except Exception as F:

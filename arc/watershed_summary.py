@@ -173,7 +173,7 @@ def parse_results(results_list):
 
 
 
-def create_summary(site_lat, site_long, observation_date, geographic_scope, huc, huc_size, results_list, watershed_summary_path):
+def create_summary(site_lat, site_long, observation_date, geographic_scope, huc, huc_size, results_list, watershed_summary_path, grid_selection):
     """Creates Summary of results and prints to pdf"""
     # Define Colors
     light_grey = (0.85, 0.85, 0.85)
@@ -274,11 +274,13 @@ def create_summary(site_lat, site_long, observation_date, geographic_scope, huc,
     inputs_table_values = [
         ['Coordinates', '{}, {}'.format(round(float(site_lat), 6), round(float(site_long), 6))],
         ['Date', observation_date],
-        ['Geographic Scope', geographic_scope]
+        ['Geographic Scope', geographic_scope],
+        ['Used Gridded Precipitaton', grid_selection]
     ]
 
     # Create Inputs Table Colors
     inputs_table_colors = [
+        [light_grey, white],
         [light_grey, white],
         [light_grey, white],
         [light_grey, white]

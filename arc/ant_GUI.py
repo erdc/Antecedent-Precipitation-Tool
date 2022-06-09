@@ -1495,7 +1495,8 @@ class Main(object):
                                                                  huc=huc,
                                                                  huc_size=huc_square_miles,
                                                                  results_list=watershed_results_list,
-                                                                 watershed_summary_path=watershed_summary_path)
+                                                                 watershed_summary_path=watershed_summary_path,
+                                                                 grid_selection=self.grid)
                     if generated:
                         pdf_list = [watershed_summary_path] + pdf_list
                         parts_2_delete.append(watershed_summary_path)
