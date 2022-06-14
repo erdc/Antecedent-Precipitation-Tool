@@ -208,10 +208,10 @@ def create_summary(site_lat, site_long, observation_date, geographic_scope, huc,
     img = fig.figimage(X=logo, xo=0, yo=0)
     img.set_zorder(0)
 
-    ax1 = plt.subplot2grid((20, 9), (3, 1), colspan=4, rowspan=2)
-    ax2 = plt.subplot2grid((20, 9), (6, 1), colspan=4, rowspan=2)
-    ax3 = plt.subplot2grid((20, 9), (9, 1), colspan=4, rowspan=2)
-    ax4 = plt.subplot2grid((20, 9), (12, 0), colspan=9, rowspan=9)
+    ax1 = plt.subplot2grid((20, 9), (3, 1), colspan=4, rowspan=3)
+    ax2 = plt.subplot2grid((20, 9), (7, 1), colspan=4, rowspan=2)
+    ax3 = plt.subplot2grid((20, 9), (10, 1), colspan=4, rowspan=2)
+    ax4 = plt.subplot2grid((20, 9), (13, 0), colspan=9, rowspan=9)
     ax5 = plt.subplot2grid((20, 18), (3, 11), colspan=4, rowspan=7)
     ax1.set_zorder(1)
     ax2.set_zorder(1)
@@ -289,7 +289,7 @@ def create_summary(site_lat, site_long, observation_date, geographic_scope, huc,
     # Plot inputs_table
     inputs_table = ax1.table(cellText=inputs_table_values,
                              cellColours=inputs_table_colors,
-                             colWidths=[0.27, 0.355],
+                             colWidths=[0.4, 0.355],
                              cellLoc='center',
                              loc='lower center')
 
