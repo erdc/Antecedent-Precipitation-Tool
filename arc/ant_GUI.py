@@ -35,7 +35,7 @@
 ##     Written by: Jason Deters     ##
 ##      Edited by: Joseph Gutenson  ##
 ##  ------------------------------- ##
-##    Last Edited on:  2021-11-16   ##
+##    Last Edited on:  2022-06-28   ##
 ##  ------------------------------- ##
 ######################################
 
@@ -129,7 +129,6 @@ class Main(object):
         self.input_list_list_snow = []
         self.input_list_list_snwd = []
         self.show = False
-        self.ncdc_working = False
         # Define Local Variables
         root_folder = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
@@ -189,6 +188,7 @@ class Main(object):
                                                       offvalue=0, onvalue=1,
                                                       command=self.set_grid_input)
         self.grid_selection.grid(row=self.row, column=0, sticky='nw', columnspan=1)
+
 
         #---HELP BUTTON---#
         self.help_button = tkinter.ttk.Button(self.master, text='Help / More Info', image=self.question_image, command=click_help_button)
@@ -733,9 +733,26 @@ class Main(object):
         Runs the main function with currently selected values.
             -Will run as batch if batch processes have already been entered
         """
+        self.ncdc_working = False
         # Test whether NOAA's servers are online and accessible
-        self.test_noaa_server()
-        if self.ncdc_working:
+        if self.grid is False:
+            self.test_noaa_server()
+        if self.ncdc_working is True and self.grid is False:
+            try:
+                current_style = self.batch_style_string_var.get()
+                if current_style == 'Switch to Date Range': # Means it is currently on Unique
+                    self.get_inputs_unique()
+                elif current_style == 'Switch to CSV Input': # Means it is currently on Range
+                    self.get_inputs_range()
+                elif current_style == 'Switch to Unique Dates': #Means it is currently on CSV
+                    self.get_inputs_csv()
+            except Exception:
+                print('The APT cannot complete this analysis.\n')
+                print('The following error occurred. Please close the APT and reboot.\n')
+                # self.L.Wrap(traceback.format_exc())
+                raise
+        if self.ncdc_working is False and self.grid is True:
+            self.L.print_title("Analyzing NOAA Gridded Dataset")
             try:
                 current_style = self.batch_style_string_var.get()
                 if current_style == 'Switch to Date Range': # Means it is currently on Unique

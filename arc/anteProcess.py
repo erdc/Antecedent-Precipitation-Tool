@@ -409,7 +409,7 @@ class Main(object):
             except Exception:
                 pass
             pickle_path = os.path.join(pickle_folder, 'station_classes.pickle')
-            if self.data_type == 'PRCP':
+            if self.data_type == 'PRCP' and self.grid is False:
                 self.log.Wrap('Checking for previously cached NCDC GHCN Weather Station Records...')
                 stations_pickle_exists = os.path.exists(pickle_path)
                 if stations_pickle_exists:
@@ -543,7 +543,7 @@ class Main(object):
                 pass
             pickle_path = os.path.join(pickle_folder, 'stations.pickle')
             stations_pickle_exists = os.path.exists(pickle_path)
-            if self.data_type == 'PRCP':
+            if self.data_type == 'PRCP' and self.grid is False:
                 if stations_pickle_exists:
                     remove_pickle = False
                     # Call the file stale if it is older than 90 days, because
@@ -569,7 +569,7 @@ class Main(object):
                             self.log.Wrap('Unserializing failed.')
                             self.ghcn_station_list = None
             # Double-check it wasn't created above
-            if self.ghcn_station_list is None:
+            if self.ghcn_station_list is None and self.grid is False:
                 self.log.Wrap("Downloading list of NCDC GHCN daily weather stations...")
                 self.ghcn_station_list = ulmo.ncdc.ghcn_daily.get_stations(elements=self.data_type,
                                                                            update=True,
