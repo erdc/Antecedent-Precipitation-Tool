@@ -125,14 +125,26 @@ def get_closest_coordinates_numpy(dataset, lat0, lon0):
     #ny, nx = latvals.shape
     lat0_rad = lat0 * rad_factor
     lon0_rad = lon0 * rad_factor
-    # Compute numpy arrays for all values, no loops
+    # Compute using Haversine Distance
+    r = 6371 #radius of the earth in km
     clat,clon = numpy.cos(latvals), numpy.cos(lonvals)
     slat,slon = numpy.sin(latvals), numpy.sin(lonvals)
-    delX = numpy.cos(lat0_rad)*numpy.cos(lon0_rad) - clat*clon
-    delY = numpy.cos(lat0_rad)*numpy.sin(lon0_rad) - clat*slon
-    delZ = numpy.sin(lat0_rad) - slat;
-    dist_sq = delX**2 + delY**2 + delZ**2
-    minindex_1d = dist_sq.argmin()  # 1D index of minimum element
+    dlat = latvals - lat0_rad
+    dlon = lonvals - lon0_rad
+    a = numpy.sin(dlat/2)**2 + numpy.cos(lat0_rad) * numpy.cos(latvals) * numpy.sin(dlon/2)**2
+    # c = 2 * numpy.arcsin(numpy.sqrt(a))
+    c = 2 * numpy.arctan2(numpy.sqrt(a), numpy.sqrt(1-a)) 
+    distance = c * r # in units of km
+    distance_min = numpy.amin(distance)*0.621371
+    minindex_1d = distance.argmin()  # 1D index of minimum element
+    # # Compute numpy arrays for all values, no loops
+    # clat,clon = numpy.cos(latvals), numpy.cos(lonvals)
+    # slat,slon = numpy.sin(latvals), numpy.sin(lonvals)
+    # delX = numpy.cos(lat0_rad)*numpy.cos(lon0_rad) - clat*clon
+    # delY = numpy.cos(lat0_rad)*numpy.sin(lon0_rad) - clat*slon
+    # delZ = numpy.sin(lat0_rad) - slat;
+    # dist_sq = delX**2 + delY**2 + delZ**2
+    # minindex_1d = dist_sq.argmin()  # 1D index of minimum element
     closest_lat = lat_degree_vals_numpy[minindex_1d]
     closest_lon = lon_degree_vals_numpy[minindex_1d]
     time_taken = time.clock() - calc_start
@@ -147,7 +159,7 @@ def get_closest_coordinates_numpy(dataset, lat0, lon0):
         if lon_degree_val == closest_lon:
             lon_index = n
         n += 1
-    return closest_lat, lat_index, closest_lon, lon_index
+    return closest_lat, lat_index, closest_lon, lon_index, distance_min
 
 def get_nc_files(netcdf_folder, pre_length, post_length):
     # netcdf_folder = r'\\coe-spknv001sac.spk.ds.usace.army.mil\EGIS_GEOMATICS\Regulatory\BaseData\Climatology\nclimdivd\nclimdivd-alpha-nc'
@@ -189,6 +201,7 @@ class get_point_history(object):
         self.data_rows = 0
         self.entire_precip_ts = None
         self.entire_station_count_ts = None
+        self.distance = 0
 
     def __call__(self):
         print('Getting complete PRCP history for ({}, {})...'.format(self.lat, self.lon))
@@ -208,12 +221,12 @@ class get_point_history(object):
                 times = timevar[:]
                 # Find closest Lat/Lon and set export path
                 if self.closest_lat is None or self.closest_lon is None:
-                    self.closest_lat, self.lat_index, self.closest_lon, self.lon_index = get_closest_coordinates_numpy(dataset, self.lat, self.lon)
+                    self.closest_lat, self.lat_index, self.closest_lon, self.lon_index, self.distance = get_closest_coordinates_numpy(dataset, self.lat, self.lon)
                     print('Closest coordinates in dataset = {}, {}'.format(self.closest_lat, self.closest_lon))
                     query_coords = (self.lat, self.lon)
                     grid_coords = (self.closest_lat, self.closest_lon)
-                    distance = great_circle(query_coords, grid_coords).miles
-                    print('Distance to center of grid = {} miles'.format(distance))
+                    # distance = great_circle(query_coords, grid_coords).miles # calculations in get_closest_coordinates_numpy() seem to replicate this function
+                    print('Distance to center of grid = {} miles'.format(self.distance))
                     print('Reading values from {} netCDF datasets...'.format(num_datasets))
                 # Collect/print/write relevant values
                 for x_time in range(len(times)):

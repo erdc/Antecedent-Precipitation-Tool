@@ -1263,17 +1263,13 @@ class Main(object):
             else:
                 os.mkdir(self.gridFolderPath)
             # Save entire TS to CSV in output directory
-            try:
-                outputName = 'gridded_data_{0}-{1}-{2}.csv'.format(self.dates.observation_date.year, self.dates.observation_date.month, self.dates.observation_date.day)
-                outputName = os.path.join(self.gridFolderPath, outputName)
-                if os.path.isfile(outputName) is True:
-                    os.remove(outputName)
-                    time.sleep(1)
-                self.log.Wrap('Saving complete gridded precipitation time series to CSV in output folder...')
-                pandas.concat([self.cdf_instance.entire_precip_ts, self.cdf_instance.entire_station_count_ts], axis=1).to_csv(outputName, header=False)
-                # self.cdf_instance.entire_precip_ts.to_csv(outputName)
-            except Exception as F:
-                self.log.Wrap(str(F))
+            outputName = 'gridded_data_{0}.csv'.format(self.dates.observation_date)
+            outputName = os.path.join(self.gridFolderPath, outputName)
+            if os.path.isfile(outputName) is True:
+                os.remove(outputName)
+                time.sleep(1)
+            self.log.Wrap('Saving complete gridded precipitation time series to CSV in output folder...')
+            pandas.concat([self.cdf_instance.entire_precip_ts, self.cdf_instance.entire_station_count_ts], axis=1).to_csv(outputName, header=False)
             self.log.Wrap('Entire TimeSeries rows = {}'.format(self.cdf_instance.entire_precip_ts.count()))
             self.finalDF = self.cdf_instance.entire_precip_ts[self.dates.normal_period_data_start_date:self.dates.actual_data_end_date]
             self.log.Wrap('FinalDF rows = {}'.format(self.finalDF.count()))
@@ -1288,10 +1284,6 @@ class Main(object):
                     self.finalDF = self.finalDF * 0.03937008
                     self.log.Wrap('self.finalDF conversion complete.')
             station_count_data = numpy.float64(self.cdf_instance.entire_station_count_ts[self.dates.normal_period_data_start_date:self.dates.actual_data_end_date])
-            dump_path_file = open(os.path.join(self.gridFolderPath, "Pickle_dump"),'wb')
-            pickle.dump(self.cdf_instance.entire_station_count_ts, dump_path_file)
-            dump_path_file.close()
-            del(dump_path_file)
             vals = []
             vals.append("Minimum count of weather stations within 30 miles")
             vals.append(int(round(station_count_data.min(),0)))
