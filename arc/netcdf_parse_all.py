@@ -125,26 +125,18 @@ def get_closest_coordinates_numpy(dataset, lat0, lon0):
     #ny, nx = latvals.shape
     lat0_rad = lat0 * rad_factor
     lon0_rad = lon0 * rad_factor
-    # Compute using Haversine Distance
+    # Find nearest grid cell centroid using Haversine Distance
     r = 6371 #radius of the earth in km
     clat,clon = numpy.cos(latvals), numpy.cos(lonvals)
     slat,slon = numpy.sin(latvals), numpy.sin(lonvals)
-    dlat = latvals - lat0_rad
-    dlon = lonvals - lon0_rad
+    dlat = rad_factor * (lat_degree_vals_numpy - lat0)
+    dlon = rad_factor * (lon_degree_vals_numpy - lon0)
     a = numpy.sin(dlat/2)**2 + numpy.cos(lat0_rad) * numpy.cos(latvals) * numpy.sin(dlon/2)**2
     # c = 2 * numpy.arcsin(numpy.sqrt(a))
-    c = 2 * numpy.arctan2(numpy.sqrt(a), numpy.sqrt(1-a)) 
+    c = 2 * numpy.arctan2(numpy.sqrt(a), numpy.sqrt(1-a))
     distance = c * r # in units of km
     distance_min = numpy.amin(distance)*0.621371
     minindex_1d = distance.argmin()  # 1D index of minimum element
-    # # Compute numpy arrays for all values, no loops
-    # clat,clon = numpy.cos(latvals), numpy.cos(lonvals)
-    # slat,slon = numpy.sin(latvals), numpy.sin(lonvals)
-    # delX = numpy.cos(lat0_rad)*numpy.cos(lon0_rad) - clat*clon
-    # delY = numpy.cos(lat0_rad)*numpy.sin(lon0_rad) - clat*slon
-    # delZ = numpy.sin(lat0_rad) - slat;
-    # dist_sq = delX**2 + delY**2 + delZ**2
-    # minindex_1d = dist_sq.argmin()  # 1D index of minimum element
     closest_lat = lat_degree_vals_numpy[minindex_1d]
     closest_lon = lon_degree_vals_numpy[minindex_1d]
     time_taken = time.clock() - calc_start
@@ -159,7 +151,7 @@ def get_closest_coordinates_numpy(dataset, lat0, lon0):
         if lon_degree_val == closest_lon:
             lon_index = n
         n += 1
-    return closest_lat, lat_index, closest_lon, lon_index, distance_min
+    return closest_lat, lat_index, closest_lon, lon_index, distance_min, lat_array_list, lon_array_list
 
 def get_nc_files(netcdf_folder, pre_length, post_length):
     # netcdf_folder = r'\\coe-spknv001sac.spk.ds.usace.army.mil\EGIS_GEOMATICS\Regulatory\BaseData\Climatology\nclimdivd\nclimdivd-alpha-nc'
@@ -204,9 +196,11 @@ class get_point_history(object):
         self.distance = 0
 
     def __call__(self):
+        # this was Joseph trying to summarize the station count data
+        # list_of_station_counts = []
         print('Getting complete PRCP history for ({}, {})...'.format(self.lat, self.lon))
-        netcdf_precip_folder = r'F:\2020_APT_SON\Gridded_Rainfall'
-        netcdf_station_count_folder = r'F:\2020_APT_SON\Gridded_Rainfall_Station_Counts'
+        netcdf_precip_folder = r'D:\2020_APT_SON\Gridded_Rainfall'
+        netcdf_station_count_folder = r'D:\2020_APT_SON\Gridded_Rainfall_Station_Counts'
         self.nc_files = get_nc_files(netcdf_precip_folder,5,11)
         num_datasets = len(self.nc_files)
         current_dataset = 0
@@ -221,7 +215,7 @@ class get_point_history(object):
                 times = timevar[:]
                 # Find closest Lat/Lon and set export path
                 if self.closest_lat is None or self.closest_lon is None:
-                    self.closest_lat, self.lat_index, self.closest_lon, self.lon_index, self.distance = get_closest_coordinates_numpy(dataset, self.lat, self.lon)
+                    self.closest_lat, self.lat_index, self.closest_lon, self.lon_index, self.distance, lat_array_list, lon_array_list = get_closest_coordinates_numpy(dataset, self.lat, self.lon)
                     print('Closest coordinates in dataset = {}, {}'.format(self.closest_lat, self.closest_lon))
                     query_coords = (self.lat, self.lon)
                     grid_coords = (self.closest_lat, self.closest_lon)
@@ -258,6 +252,26 @@ class get_point_history(object):
             for x_time in range(len(times)):
                 station_count_val = station_count[x_time, self.lat_index, self.lon_index]
                 self.station_count_values.append(station_count_val)
+        # this was Joseph tring to summarize the station count data
+        #     vals = station_count[:].tolist()
+        #     for val in vals:
+        #         for i in val:
+        #             vals_filtered = list(filter(lambda j: j is not None, i))
+        #             list_of_station_counts.extend(vals_filtered)
+        #     # for val in vals:
+        #     #     if isinstance(val, int):
+        #     #         vals_filtered.append(val)
+        #     #     else:
+        #     #         pass
+        #         # print(vals_filtered)
+        #
+        #
+        #             # if str(val) != "--":
+        #             #     print(val)
+        #
+        #
+        # # getting data of the histogram
+        # count, bins_count = numpy.histogram(list_of_station_counts, bins=10)
 
         print('----------')
         print('')

@@ -1702,19 +1702,19 @@ class DateEntry(tkinter.Frame):
         entry_text = self.entry_year.get()
         if len(entry_text) > 3:
             int_year = int(entry_text)
-            if int_year < 1910 and self.grid == False:
+            if int_year < 1910:
                 self.year_problem = True
                 print(' ')
                 print('Year cannot be less than 1910 for a station based analysis!')
-            if int_year < 1983 and self.grid == True:
+            if int_year < 1951 and self.grid == True:
                 self.year_problem = True
                 print(' ')
-                print('Year cannot be less than 1983 for a grid based analysis!')
-            elif int_year > self.two_days_prior_year and self.grid == False:
+                print('Year cannot be less than 1951 for a grid based analysis!')
+            elif int_year > self.two_days_prior_year:
                 self.year_problem = True
                 print(' ')
                 print('Year cannot be greater than {}!'.format(self.two_days_prior_year))
-            elif int_year > self.three_days_prior_year and self.grid == True:
+            elif int_year > self.three_days_prior_year:
                 self.year_problem = True
                 print(' ')
                 print('Year cannot be greater than {}!'.format(self.three_days_prior_year))

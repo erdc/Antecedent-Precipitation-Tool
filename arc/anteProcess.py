@@ -1207,6 +1207,11 @@ class Main(object):
             self.log.print_separator_line()
             self.log.Wrap('')
 
+            if self.finalDF.isnull().sum().sum() > 0:
+                self.log.Wrap('Null values remain after interpolation... the APT cannot complete this analysis')
+                self.log.Wrap('')
+                raise
+
             # SAVE finalDF TO CSV IN OUTPUT DIRECTORY
             if self.save_folder is not None:
                 # Ensure output folder exists
@@ -1785,7 +1790,7 @@ class Main(object):
                 ax1.set_title("Antecedent Precipitation vs Normal Range based on NOAA's Daily Global Historical Climatology Network",
                               fontsize=20)
             elif self.grid is True:
-                ax1.set_title("Antecedent Precipitation vs Normal Range based on NOAA's Gridded Daily Global Historical Climatology Network",
+                ax1.set_title("Antecedent Precipitation vs Normal Range based on NOAA's nClimGrid Precipitation Data",
                               fontsize=20)
 #            ax1.set_title('NOAA - National Climatic Data Center - Daily Global'
 #                          ' Historical Climatology Network - Rainfall Data',
