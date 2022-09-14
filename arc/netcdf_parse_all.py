@@ -199,8 +199,8 @@ class get_point_history(object):
         # this was Joseph trying to summarize the station count data
         # list_of_station_counts = []
         print('Getting complete PRCP history for ({}, {})...'.format(self.lat, self.lon))
-        netcdf_precip_folder = r'D:\2020_APT_SON\Gridded_Rainfall'
-        netcdf_station_count_folder = r'D:\2020_APT_SON\Gridded_Rainfall_Station_Counts'
+        netcdf_precip_folder = r'F:\2020_APT_SON\Gridded_Rainfall'
+        netcdf_station_count_folder = r'F:\2020_APT_SON\Gridded_Rainfall_Station_Counts'
         self.nc_files = get_nc_files(netcdf_precip_folder,5,11)
         num_datasets = len(self.nc_files)
         current_dataset = 0

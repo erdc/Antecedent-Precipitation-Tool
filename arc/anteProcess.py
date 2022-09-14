@@ -1790,7 +1790,7 @@ class Main(object):
                 ax1.set_title("Antecedent Precipitation vs Normal Range based on NOAA's Daily Global Historical Climatology Network",
                               fontsize=20)
             elif self.grid is True:
-                ax1.set_title("Antecedent Precipitation vs Normal Range based on NOAA's nClimGrid Precipitation Data",
+                ax1.set_title("Antecedent Precipitation vs Normal Range based on NOAA's nClimGrid-Daily Precipitation Data",
                               fontsize=20)
 #            ax1.set_title('NOAA - National Climatic Data Center - Daily Global'
 #                          ' Historical Climatology Network - Rainfall Data',
