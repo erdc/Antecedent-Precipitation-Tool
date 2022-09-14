@@ -384,7 +384,7 @@ class Main(object):
         self.log.Wrap('Setting yMax to ' + str(yMax))
         self.yMax = yMax
 
-    def setInputs(self, inputList, watershed_analysis, all_sampling_coordinates, grid):
+    def setInputs(self, inputList, watershed_analysis, all_sampling_coordinates, gridded):
         # Set Inputs
         self.data_type = inputList[0]
         self.site_lat = inputList[1]
@@ -398,7 +398,7 @@ class Main(object):
         self.forecast_setting = inputList[9]
         self.watershed_analysis = watershed_analysis
         self.all_sampling_coordinates = all_sampling_coordinates
-        self.grid = grid # True/False this analysis will be using gridded rainfall
+        self.gridded = gridded # True/False this analysis will be using gridded rainfall
 
         if not self.allStations:
             # Check for previously Cached Station Data from same day
@@ -409,7 +409,7 @@ class Main(object):
             except Exception:
                 pass
             pickle_path = os.path.join(pickle_folder, 'station_classes.pickle')
-            if self.data_type == 'PRCP' and self.grid is False:
+            if self.data_type == 'PRCP' and self.gridded is False:
                 self.log.Wrap('Checking for previously cached NCDC GHCN Weather Station Records...')
                 stations_pickle_exists = os.path.exists(pickle_path)
                 if stations_pickle_exists:
@@ -543,7 +543,7 @@ class Main(object):
                 pass
             pickle_path = os.path.join(pickle_folder, 'stations.pickle')
             stations_pickle_exists = os.path.exists(pickle_path)
-            if self.data_type == 'PRCP' and self.grid is False:
+            if self.data_type == 'PRCP' and self.gridded is False:
                 if stations_pickle_exists:
                     remove_pickle = False
                     # Call the file stale if it is older than 90 days, because
@@ -569,7 +569,7 @@ class Main(object):
                             self.log.Wrap('Unserializing failed.')
                             self.ghcn_station_list = None
             # Double-check it wasn't created above
-            if self.ghcn_station_list is None and self.grid is False:
+            if self.ghcn_station_list is None and self.gridded is False:
                 self.log.Wrap("Downloading list of NCDC GHCN daily weather stations...")
                 self.ghcn_station_list = ulmo.ncdc.ghcn_daily.get_stations(elements=self.data_type,
                                                                            update=True,
@@ -587,7 +587,7 @@ class Main(object):
         self.site_loc = (self.site_lat, self.site_long)
 
 # COMMANDS
-        if self.grid == False:
+        if self.gridded == False:
             # Get Stations
             if self.stations == []:
                 self.getStations()
@@ -1001,7 +1001,7 @@ class Main(object):
 
     def createFinalDF(self):
         # Start to Build Stations Table (continues during iteration below)
-        if self.grid is False:
+        if self.gridded is False:
             station_table_column_labels =[["Weather Station Name",
                                            "Coordinates",
                                            "Elevation (ft)",
@@ -1010,7 +1010,7 @@ class Main(object):
                                            r"Weighted $\Delta$",
                                            "Days Normal",
                                            "Days Antecedent"]]
-        if self.grid is True:
+        if self.gridded is True:
             station_table_column_labels =[["",
                                            "Station Count Summary"]]
 
@@ -1021,7 +1021,7 @@ class Main(object):
         station_table_values = [] # added by JLG
 
         # CREATE EMPTY DATAFRAME (self.finalDF)
-        if self.grid is False:
+        if self.gridded is False:
             if float(self.site_lat) < 50:
                 maxSearchDistance = 60      # Maximum distance between observation point and station location
             else: # In AK, where stations are very rare
@@ -1077,7 +1077,7 @@ class Main(object):
             # number_of_stations = len(self.stations)
                 for station in self.stations:
                 # if self.finalDF.isnull().sum().sum() > 0 and num_stations_used < maxNumberOfStations and self.searchDistance <= maxSearchDistance and self.grid==False:
-                    if num_stations_used < maxNumberOfStations and self.searchDistance <= maxSearchDistance and self.grid==False:
+                    if num_stations_used < maxNumberOfStations and self.searchDistance <= maxSearchDistance and self.gridded==False:
                         n += 1
                         if n == 1:
                             self.log.Wrap(str(self.finalDF.isnull().sum().sum()) + ' null values.')
@@ -1256,7 +1256,7 @@ class Main(object):
                     except Exception:
                         pass
             self.log.print_separator_line()
-        elif self.grid is True:
+        elif self.gridded is True:
             # Grid Section
             num_stations_used = 0
             # if self.cdf_instance is None:
@@ -1786,10 +1786,10 @@ class Main(object):
         if self.data_type == 'PRCP':
 #            ax1.set_title("Antecedent Precipitation and 30-Year Normal Range from NOAA's Daily Global Historical Climatology Network",
 #                          fontsize=20)
-            if self.grid is False:
+            if self.gridded is False:
                 ax1.set_title("Antecedent Precipitation vs Normal Range based on NOAA's Daily Global Historical Climatology Network",
                               fontsize=20)
-            elif self.grid is True:
+            elif self.gridded is True:
                 ax1.set_title("Antecedent Precipitation vs Normal Range based on NOAA's nClimGrid-Daily Precipitation Data",
                               fontsize=20)
 #            ax1.set_title('NOAA - National Climatic Data Center - Daily Global'
@@ -1849,7 +1849,7 @@ class Main(object):
             the_table.set_fontsize(10)
 
             # Plot Stations Table
-            if self.grid is False:
+            if self.gridded is False:
                 station_table_colors = [[light_grey, light_grey, light_grey, light_grey, light_grey, light_grey, light_grey, light_grey]]
                 for row in station_table_values[:]:
                     station_table_colors.append([white, white, white, white, white, white, white, white])
@@ -1865,7 +1865,7 @@ class Main(object):
                 stations_table.set_fontsize(10)
 
             # Plot station count data from GHCN gridded dataset
-            if self.grid is True:
+            if self.gridded is True:
                 station_table_colors = [[light_grey, light_grey]]
                 for row in station_table_values[:]:
                     station_table_colors.append([white, white])
