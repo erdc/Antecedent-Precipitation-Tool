@@ -183,7 +183,7 @@ class Main(object):
         self.background_label.place(x=0, y=0, relwidth=1, relheight=1)
 
         #---GRIDDED PRECIPITATION---#
-        self.grid = False
+        self.gridded = False
         self.grid_selection = tkinter.ttk.Checkbutton(self.master, text='Use Gridded Precipitation?',
                                                       offvalue=0, onvalue=1,
                                                       command=self.set_grid_input)
@@ -533,9 +533,13 @@ class Main(object):
 
     def set_grid_input(self):
         if self.grid_selection.instate(['!selected']):
-            self.grid = False
+            self.gridded = False
+            for date_entry in self.date_entry_boxes:
+                date_entry.gridded = False
         elif self.grid_selection.instate(['selected']):
-            self.grid = True
+            self.gridded = True
+            for date_entry in self.date_entry_boxes:
+                date_entry.gridded = True
 
     def send_log(self):
         """
@@ -735,9 +739,9 @@ class Main(object):
         """
         self.ncdc_working = False
         # Test whether NOAA's servers are online and accessible
-        if self.grid is False:
+        if self.gridded is False:
             self.test_noaa_server()
-        if self.ncdc_working is True and self.grid is False:
+        if self.ncdc_working is True and self.gridded is False:
             try:
                 current_style = self.batch_style_string_var.get()
                 if current_style == 'Switch to Date Range': # Means it is currently on Unique
@@ -751,7 +755,7 @@ class Main(object):
                 print('The following error occurred. Please close the APT and reboot.\n')
                 # self.L.Wrap(traceback.format_exc())
                 raise
-        if self.ncdc_working is False and self.grid is True:
+        if self.ncdc_working is False and self.gridded is True:
             self.L.print_title("Analyzing NOAA Gridded Dataset")
             try:
                 current_style = self.batch_style_string_var.get()
@@ -1513,7 +1517,7 @@ class Main(object):
                                                                  huc_size=huc_square_miles,
                                                                  results_list=watershed_results_list,
                                                                  watershed_summary_path=watershed_summary_path,
-                                                                 grid_selection=self.grid)
+                                                                 grid_selection=self.gridded)
                     if generated:
                         pdf_list = [watershed_summary_path] + pdf_list
                         parts_2_delete.append(watershed_summary_path)
@@ -1611,6 +1615,7 @@ class Main(object):
 class DateEntry(tkinter.Frame):
     """Date entry box"""
     def __init__(self, master, frame_look={}, **look):
+        self.gridded = False
         self.recheck = False
         args = dict(relief=tkinter.SUNKEN, border=1)
         args.update(frame_look)
@@ -1702,22 +1707,26 @@ class DateEntry(tkinter.Frame):
         entry_text = self.entry_year.get()
         if len(entry_text) > 3:
             int_year = int(entry_text)
-            if int_year < 1910:
-                self.year_problem = True
-                print(' ')
-                print('Year cannot be less than 1910 for a station based analysis!')
-            if int_year < 1951 and self.grid == True:
-                self.year_problem = True
-                print(' ')
-                print('Year cannot be less than 1951 for a grid based analysis!')
-            elif int_year > self.two_days_prior_year:
-                self.year_problem = True
-                print(' ')
-                print('Year cannot be greater than {}!'.format(self.two_days_prior_year))
-            elif int_year > self.three_days_prior_year:
-                self.year_problem = True
-                print(' ')
-                print('Year cannot be greater than {}!'.format(self.three_days_prior_year))
+            
+            if not self.gridded:
+                if int_year < 1910:
+                    self.year_problem = True
+                    print(' ')
+                    print('Year cannot be less than 1910 for a station based analysis!')
+                elif int_year > self.two_days_prior_year:
+                    self.year_problem = True
+                    print(' ')
+                    print('Year cannot be greater than {}!'.format(self.two_days_prior_year))
+            else:
+                if int_year < 1983:
+                    self.year_problem = True
+                    print(' ')
+                    print('Year cannot be less than 1951 for a grid based analysis!')
+                elif int_year > self.three_days_prior_year:
+                    self.year_problem = True
+                    print(' ')
+                    print('Year cannot be greater than {}!'.format(self.three_days_prior_year))
+                    
         return entry_text
 
     def _month_eval(self):
