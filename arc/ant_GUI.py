@@ -1325,7 +1325,7 @@ class Main(object):
                 self.L.print_title("SINGLE POINT ANALYSIS")
                 run_list = input_list + [save_folder, forecast_enabled]
                 self.L.Wrap('Running: '+str(run_list))
-                result_pdf, run_y_max, condition, ante_score, wet_dry_season, palmer_value, palmer_class = ante_instance.setInputs(run_list, watershed_analysis=False, all_sampling_coordinates=None, grid=self.gridded)
+                result_pdf, run_y_max, condition, ante_score, wet_dry_season, palmer_value, palmer_class = ante_instance.setInputs(run_list, watershed_analysis=False, all_sampling_coordinates=None, gridded=self.gridded)
                 if result_pdf is not None:
                     # Open folder containing outputs
                     version_folder = os.path.join(save_folder, VERSION_FOR_PATHS)
@@ -1444,7 +1444,7 @@ class Main(object):
                     self.L.Wrap('')
                     self.L.Wrap('Running: '+str(current_input_list))
                     self.L.Wrap('')
-                    result_pdf, run_y_max, condition, ante_score, wet_dry_season, palmer_value, palmer_class = ante_instance.setInputs(current_input_list, watershed_analysis=watershed_analysis, all_sampling_coordinates=sampling_points, grid=self.gridded)
+                    result_pdf, run_y_max, condition, ante_score, wet_dry_season, palmer_value, palmer_class = ante_instance.setInputs(current_input_list, watershed_analysis=watershed_analysis, all_sampling_coordinates=sampling_points, gridded=self.gridded)
                     if run_y_max > highest_y_max:
                         highest_y_max = run_y_max
                     if result_pdf is not None:

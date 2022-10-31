@@ -43,12 +43,16 @@
 import os
 import math
 import time
+from datetime import datetime
+
 
 # Import 3rd Party Libraries
 import netCDF4
 import numpy
 from geopy.distance import great_circle
 import pandas
+from dask.distributed import Client
+
 
 def tunnel_fast(latvals, lonvals, lat0, lon0):
     '''
@@ -153,20 +157,29 @@ def get_closest_coordinates_numpy(dataset, lat0, lon0):
         n += 1
     return closest_lat, lat_index, closest_lon, lon_index, distance_min, lat_array_list, lon_array_list
 
-def get_nc_files(netcdf_folder, pre_length, post_length):
+def get_nc_files(prcp_netcdf_folder, station_count_netcdf_folder):
     # netcdf_folder = r'\\coe-spknv001sac.spk.ds.usace.army.mil\EGIS_GEOMATICS\Regulatory\BaseData\Climatology\nclimdivd\nclimdivd-alpha-nc'
     nc_dates_and_files = []
-    for root, directories, file_names in os.walk(netcdf_folder):
-        for file_name in file_names:
-            pre = file_name[:pre_length]
-            post = file_name[post_length:]
-            date = file_name[pre_length:post_length]
-            file_path = os.path.join(root, file_name)
-            nc_dates_and_files.append([date, file_path])
-            # if pre == 'prcp-':
-            #     if post == '-grd-scaled.nc':
-            #         file_path = os.path.join(root, file_name)
-            #         nc_dates_and_files.append([date, file_path])
+    # years = os.listdir(netcdf_folder)
+    first_year = datetime(1951,1,1)
+    current_year = datetime.now()
+    years = pandas.date_range(first_year,current_year,freq='AS').year.tolist()
+    months = ['01','02','03','04','05','06','07','08','09','10','11','12']
+    for year in years:
+        year = str(year)
+        for month in months:
+            date = '{0}{1}'.format(year,month)
+            # create the paths to the precip netcdfs
+            prcp_file = 'ncdd-{0}-grd-scaled.nc'.format(date)
+            prcp_file_path = '{0}/{1}/{2}'.format(prcp_netcdf_folder,year,prcp_file)
+            # create the paths to the station count netcdfs
+            station_count_file = 'ncddsupp-{0}-obcounts.nc'.format(date)
+            station_count_file_path = '{0}/{1}/{2}'.format(station_count_netcdf_folder,year,station_count_file)
+            nc_dates_and_files.append([date, prcp_file_path, station_count_file_path])
+                    # if pre == 'prcp-':
+                    #     if post == '-grd-scaled.nc':
+                    #         file_path = os.path.join(root, file_name)
+                    #         nc_dates_and_files.append([date, file_path])
     nc_dates_and_files.sort(key=lambda x: x[0], reverse=False)
     # nc_files = []
     # for nc_date_and_file in nc_dates_and_files:
@@ -197,25 +210,35 @@ class get_point_history(object):
 
     def __call__(self):
         # this was Joseph trying to summarize the station count data
-        # list_of_station_counts = []
+        # list_of_monthly_minimum_station_counts = []
+        # list_of_monthly_median_station_counts = []
+        # list_of_monthly_mean_station_counts = []
+        # list_of_monthly_maximum_station_counts = []
         print('Getting complete PRCP history for ({}, {})...'.format(self.lat, self.lon))
-        netcdf_precip_folder = r'F:\2020_APT_SON\Gridded_Rainfall'
-        netcdf_station_count_folder = r'F:\2020_APT_SON\Gridded_Rainfall_Station_Counts'
-        self.nc_files = get_nc_files(netcdf_precip_folder,5,11)
+        netcdf_precip_folder = r'https://www.ncei.noaa.gov/thredds/dodsC/nclimgrid-daily'
+        netcdf_station_count_folder = r'https://www.ncei.noaa.gov/thredds/dodsC/nclimgrid-daily-auxiliary'
+        self.nc_files = get_nc_files(netcdf_precip_folder, netcdf_station_count_folder)
+        # with Client() as client:
+        # client = Client()
         num_datasets = len(self.nc_files)
         current_dataset = 0
         for nc_file in self.nc_files:
+            print(nc_file)
             current_dataset += 1
             try:
                 # Open dataset and get variables / basic info
-                dataset = netCDF4.Dataset(nc_file[1], 'r')
-                prcp = dataset.variables['prcp']
-                timevar = dataset.variables['time']
+                prcp_dataset = netCDF4.Dataset(nc_file[1], 'r')
+                prcp = prcp_dataset.variables['prcp']
+                timevar = prcp_dataset.variables['time']
                 timeunits = timevar.units
                 times = timevar[:]
+                # Open dataset and get variables / basic info
+                station_count_dataset = netCDF4.Dataset(nc_file[2], 'r')
+                station_count = station_count_dataset.variables['cntp']
+
                 # Find closest Lat/Lon and set export path
                 if self.closest_lat is None or self.closest_lon is None:
-                    self.closest_lat, self.lat_index, self.closest_lon, self.lon_index, self.distance, lat_array_list, lon_array_list = get_closest_coordinates_numpy(dataset, self.lat, self.lon)
+                    self.closest_lat, self.lat_index, self.closest_lon, self.lon_index, self.distance, lat_array_list, lon_array_list = get_closest_coordinates_numpy(prcp_dataset, self.lat, self.lon)
                     print('Closest coordinates in dataset = {}, {}'.format(self.closest_lat, self.closest_lon))
                     query_coords = (self.lat, self.lon)
                     grid_coords = (self.closest_lat, self.closest_lon)
@@ -234,45 +257,77 @@ class get_point_history(object):
                         self.timestamps.append(t_stamp)
                     else:
                         self.blank_rows += 1
+                    station_count_val = station_count[x_time, self.lat_index, self.lon_index]
+                    self.station_count_values.append(station_count_val)
+                print(prcp_val)
+                print(station_count_val)
             except Exception as F:
-                print('----------')
-                print('----EXCEPTION!!!------')
-                print('----------')
-                print('Error processing dataset {} of {}'.format(current_dataset, num_datasets))
-                dataset_name = os.path.split(nc_file)[1]
-                print('Dataset name = {}'.format(dataset_name))
-                print(str(F))
-                print('----------')
-                print('----EXCEPTION!!!------')
-            # Open dataset and get variables / basic info
-            station_count_nc_file = os.path.join(netcdf_station_count_folder,"ncddsupp-{0}-obcounts.nc".format(nc_file[0]))
-            dataset = netCDF4.Dataset(station_count_nc_file, 'r')
-            station_count = dataset.variables['cntp']
-            # Collect/print/write relevant values
-            for x_time in range(len(times)):
-                station_count_val = station_count[x_time, self.lat_index, self.lon_index]
-                self.station_count_values.append(station_count_val)
+                pass
+                # print('----------')
+                # print('----EXCEPTION!!!------')
+                # print('----------')
+                # print('Error processing dataset {} of {}'.format(current_dataset, num_datasets))
+                # dataset_name = os.path.split(nc_file)[1]
+                # print('Dataset name = {}'.format(dataset_name))
+                # print(str(F))
+                # print('----------')
+                # print('----EXCEPTION!!!------')
+            # # Open dataset and get variables / basic info
+            # station_count_nc_file = os.path.join(netcdf_station_count_folder,"ncddsupp-{0}-obcounts.nc".format(nc_file[0]))
+            # dataset = netCDF4.Dataset(station_count_nc_file, 'r')
+            # station_count = dataset.variables['cntp']
+            # # Collect/print/write relevant values
+            # for x_time in range(len(times)):
+            #     station_count_val = station_count[x_time, self.lat_index, self.lon_index]
+            #     self.station_count_values.append(station_count_val)
         # this was Joseph tring to summarize the station count data
-        #     vals = station_count[:].tolist()
-        #     for val in vals:
-        #         for i in val:
-        #             vals_filtered = list(filter(lambda j: j is not None, i))
-        #             list_of_station_counts.extend(vals_filtered)
-        #     # for val in vals:
-        #     #     if isinstance(val, int):
-        #     #         vals_filtered.append(val)
-        #     #     else:
-        #     #         pass
-        #         # print(vals_filtered)
-        #
-        #
-        #             # if str(val) != "--":
-        #             #     print(val)
-        #
-        #
-        # # getting data of the histogram
-        # count, bins_count = numpy.histogram(list_of_station_counts, bins=10)
+            # list_of_monthly_station_counts = []
+            # vals = station_count[:].tolist()
+            # for val in vals:
+            #     for i in val:
+            #         vals_filtered = list(filter(lambda j: j is not None, i))
+            #         list_of_monthly_station_counts.extend(vals_filtered)
+            #
+            # list_of_monthly_station_counts = sorted(list_of_monthly_station_counts)
+            #
+            # minimum_monthly_station_count = min(list_of_monthly_station_counts)
+            # list_of_monthly_minimum_station_counts.append(minimum_monthly_station_count)
+            #
+            # median_monthly_station_count = numpy.median(list_of_monthly_station_counts)
+            # list_of_monthly_median_station_counts.append(median_monthly_station_count)
+            #
+            # mean_monthly_station_count = sum(list_of_monthly_station_counts)/len(list_of_monthly_station_counts)
+            # list_of_monthly_mean_station_counts.append(mean_monthly_station_count)
+            #
+            # max_monthly_station_count = max(list_of_monthly_station_counts)
+            # list_of_monthly_maximum_station_counts.append(max_monthly_station_count)
+            # print(nc_file)
+            # for val in vals:
+            #     if isinstance(val, int):
+            #         vals_filtered.append(val)
+            #     else:
+            #         pass
+                # print(vals_filtered)
 
+
+                    # if str(val) != "--":
+                    #     print(val)
+        # date_range = pandas.date_range(start='1/1/1989', end='1/31/2022', freq='MS')
+        # print(date_range)
+        # data = {'date': date_range,
+        #         'Minimum': list_of_monthly_minimum_station_counts,
+        #         'Median': list_of_monthly_median_station_counts,
+        #         'Mean': list_of_monthly_mean_station_counts,
+        #         'Maximum': list_of_monthly_maximum_station_counts}
+        # df = pandas.DataFrame(data)
+        # df = df.set_index('date')
+        #
+        # # getting a line plot of the montlhy data
+        # output_path = r"C:\Users\RDCHLJLG\Desktop\line_plot.tif"
+        # line_plot = df.plot(figsize=(7,5), kind='line', lw=2, colormap='jet')
+        # line_plot.set_xlabel("")
+        # line_plot.set_ylabel("Number of GHCN Stations")
+        # line_plot.figure.savefig(output_path)
         print('----------')
         print('')
         print('All datasets processed.')
