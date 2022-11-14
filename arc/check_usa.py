@@ -33,8 +33,11 @@
 ##          check_usa.py            ##
 ##  ------------------------------- ##
 ##     Copyright: Jason Deters      ##
+##                                  ##
+##    Written by: Jason Deters      ##
+##     Edited by: Chase Hamilton    ##
 ##  ------------------------------- ##
-##    Last Edited on: 2020-05-27    ##
+##    Last Edited on: 2022-11-10    ##
 ##  ------------------------------- ##
 ######################################
 
@@ -46,7 +49,7 @@ import sys
 import random
 
 # Import 3rd Party Libraries
-import ogr
+from osgeo import ogr
 ogr.UseExceptions()
 
 # Import Custom Libraries
@@ -74,13 +77,14 @@ def main(lat, lon):
     lon = float(lon)
     in_usa = False
     # Find module path
-    module_folder = os.path.dirname(os.path.realpath(__file__))
+    #module_folder = os.path.dirname(os.path.realpath(__file__))
     # Find ROOT folder
-    root_folder = os.path.split(module_folder)[0]
+    #root_folder = os.path.split(module_folder)[0]
     # Find USA Boundary Shapefile
-    gis_folder = os.path.join(root_folder, 'GIS')
-    usa_shapefile_folder = os.path.join(gis_folder, 'us_shp')
-    usa_shapefile_path = os.path.join(usa_shapefile_folder, 'cb_2018_us_nation_5m.shp')
+    #gis_folder = os.path.join(root_folder, 'GIS')
+    #usa_shapefile_folder = os.path.join(gis_folder, 'us_shp')
+    #usa_shapefile_path = os.path.join(usa_shapefile_folder, 'cb_2018_us_nation_5m.shp')
+    usa_shapefile_path = r"E:\Projects\Antecedent-Precipitation-Tool\arc\GIS\us_shp\cb_2018_us_nation_5m.shp"
 
     # Get the contents of the USA Boundary Shapefile
     ds_in = ogr.Open(usa_shapefile_path)
@@ -104,7 +108,10 @@ def main(lat, lon):
 
     # Create a point
     pt = ogr.Geometry(ogr.wkbPoint)
-    pt.SetPoint_2D(0, t_lon, t_lat)
+#    pt.SetPoint_2D(0, t_lon, t_lat)
+
+    # ogr seems to have changes lat/lon ordering
+    pt.SetPoint_2D(0, t_lat, t_lon)
 
     # Check if point is within boundary
     for feat_in in lyr_in:

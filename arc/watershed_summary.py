@@ -41,7 +41,7 @@
 
 # Import Standard Libraries
 import time
-import datetime
+from datetime import datetime
 
 # Import 3rd Party Libraries
 import numpy
@@ -369,7 +369,7 @@ def create_summary(site_lat, site_long, observation_date, geographic_scope, huc,
     sampling_point_table.scale(1, 1)
 
     # Get string of today's date
-    today_datetime = datetime.datetime.today()
+    today_datetime = datetime.today()
     today_str = today_datetime.strftime('%Y-%m-%d')
     # Add Generated on today's date text
     #date_generated_text = ax1.text(0.027, 0.153, "Generated on {}".format(today_str), size=10, color='white')

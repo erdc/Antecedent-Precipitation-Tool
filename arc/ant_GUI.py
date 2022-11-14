@@ -34,14 +34,19 @@
 ##  ------------------------------- ##
 ##     Written by: Jason Deters     ##
 ##      Edited by: Joseph Gutenson  ##
+##      Edited by: Chase Hamilton   ""
 ##  ------------------------------- ##
-##    Last Edited on:  2022-06-28   ##
+##    Last Edited on:  2022-11-10   ##
 ##  ------------------------------- ##
 ######################################
 
 """
 Graphical user interface for the Antecedent Precipitation Tool
 """
+
+import pickle
+
+
 
 # Import Standard Libraries
 import tkinter
@@ -52,8 +57,7 @@ import sys
 import shutil
 import subprocess
 import traceback
-import datetime
-import time
+from datetime import datetime, timedelta
 import ftplib
 
 # Import 3rd-Party Libraries
@@ -67,6 +71,7 @@ ROOT = os.path.split(MODULE_PATH)[0]
 
 # Import Custom Libraries
 try:
+    from . import anteProcess
     from . import huc_query
     from . import custom_watershed_query
     from . import check_usa
@@ -76,12 +81,16 @@ try:
     from .utilities import JLog
 except Exception:
     # Old unfrozen version backwards compatibility step
+    import anteProcess
     import huc_query
     import custom_watershed_query
     import check_usa
     import watershed_summary
     import help_window
     import get_all
+    from utilities import JLog
+
+"""
     # Add utilities folder to path directly
     PYTHON_SCRIPTS_FOLDER = os.path.join(ROOT, 'Python Scripts')
     TEST = os.path.exists(PYTHON_SCRIPTS_FOLDER)
@@ -95,6 +104,7 @@ except Exception:
         UTILITIES_FOLDER = os.path.join(ARC_FOLDER, 'utilities')
         sys.path.append(UTILITIES_FOLDER)
     import JLog
+"""
 
 # Version stuff
 get_all.ensure_version_file()
@@ -843,7 +853,7 @@ class Main(object):
             else:
                 start_month = str(start_month)
             start_date = str(start_year)+'-'+start_month+'-'+start_day
-            start_datetime = datetime.datetime.strptime(start_date, '%Y-%m-%d')
+            start_datetime = datetime.strptime(start_date, '%Y-%m-%d')
             # Get end_datetime
             if len(str(end_day)) == 1:
                 end_day = '0'+str(end_day)
@@ -854,7 +864,7 @@ class Main(object):
             else:
                 end_month = str(end_month)
             end_date = str(end_year)+'-'+end_month+'-'+end_day
-            end_datetime = datetime.datetime.strptime(end_date, '%Y-%m-%d')
+            end_datetime = datetime.strptime(end_date, '%Y-%m-%d')
         except Exception as error:
             self.L.Wrap('')
             self.L.Wrap('{}!'.format(str(error).upper()))
@@ -888,7 +898,7 @@ class Main(object):
 
             self.calculate_or_add_batch(True, params)
             # Advance 1 day
-            test_datetime = test_datetime + datetime.timedelta(days=1)
+            test_datetime = test_datetime + timedelta(days=1)
         # Submit final request
         if watershed_scale == 'Single Point':
             self.calculate_or_add_batch(False, params)
@@ -1065,14 +1075,14 @@ class Main(object):
                 else:
                     observation_month = str(observation_month)
                 observation_date = str(observation_year)+'-'+observation_month+'-'+observation_day
-                observation_datetime = datetime.datetime.strptime(observation_date, '%Y-%m-%d')
+                observation_datetime = datetime.strptime(observation_date, '%Y-%m-%d')
             except Exception as error:
                 self.L.Wrap('')
                 self.L.Wrap('{}!'.format(str(error).upper()))
                 parameters_valid = False
         if parameters_valid:
             # Ensure date is no later than 2 days prior to current date
-            two_days_prior_datetime = datetime.datetime.today()- datetime.timedelta(days=2)
+            two_days_prior_datetime = datetime.today()- timedelta(days=2)
             if observation_datetime > two_days_prior_datetime:
                 observation_date = two_days_prior_datetime.strftime('%Y-%m-%d')
                 self.L.Wrap('Date cannot exceed two days ago due to data availability')
@@ -1093,7 +1103,7 @@ class Main(object):
         If batch is True
         --Adds current field values to batch list
         """
-        start_time = time.clock()
+        start_time = datetime.now()
         # Get Paramaters
         latitude = params[0]
         longitude = params[1]
@@ -1195,14 +1205,14 @@ class Main(object):
                 else:
                     observation_month = str(observation_month)
                 observation_date = str(observation_year)+'-'+observation_month+'-'+observation_day
-                observation_datetime = datetime.datetime.strptime(observation_date, '%Y-%m-%d')
+                observation_datetime = datetime.strptime(observation_date, '%Y-%m-%d')
             except Exception as error:
                 self.L.Wrap('')
                 self.L.Wrap('{}!'.format(str(error).upper()))
                 parameters_valid = False
         # Ensure date is no later than 2 days prior to current date
         if parameters_valid:
-            two_days_prior_datetime = datetime.datetime.today()- datetime.timedelta(days=2)
+            two_days_prior_datetime = datetime.today()- timedelta(days=2)
             if observation_datetime > two_days_prior_datetime:
                 observation_date = two_days_prior_datetime.strftime('%Y-%m-%d')
                 self.L.Wrap('Date cannot exceed two days ago due to data availability')
@@ -1224,11 +1234,6 @@ class Main(object):
             fixed_y_max = True
         if forecast_enabled == "1":
             forecast_enabled = True
-        # Import anteProcess
-        try:
-            import anteProcess
-        except Exception:
-            from . import anteProcess
         # Set data_variable specific variables
         if radio == 'Rain':
             if self.rain_instance is None:
@@ -1324,6 +1329,10 @@ class Main(object):
             if not len(input_list_list) > 1:
                 self.L.print_title("SINGLE POINT ANALYSIS")
                 run_list = input_list + [save_folder, forecast_enabled]
+
+                with open('temp.pickle', 'wb') as picklefile:
+                    pickle.dump((run_list, ante_instance, self.gridded), picklefile)
+
                 self.L.Wrap('Running: '+str(run_list))
                 result_pdf, run_y_max, condition, ante_score, wet_dry_season, palmer_value, palmer_class = ante_instance.setInputs(run_list, watershed_analysis=False, all_sampling_coordinates=None, gridded=self.gridded)
                 if result_pdf is not None:
@@ -1629,11 +1638,11 @@ class DateEntry(tkinter.Frame):
         self.month_testable = False
         self.day_testable = False
 
-        self.two_days_prior_datetime = datetime.datetime.today() - datetime.timedelta(days=2)
+        self.two_days_prior_datetime = datetime.today() - timedelta(days=2)
         self.two_days_prior_string = self.two_days_prior_datetime.strftime('%Y-%m-%d')
         self.two_days_prior_year = int(self.two_days_prior_datetime.strftime('%Y'))
 
-        self.three_days_prior_datetime = datetime.datetime.today() - datetime.timedelta(days=3)
+        self.three_days_prior_datetime = datetime.today() - timedelta(days=3)
         self.three_days_prior_string = self.three_days_prior_datetime.strftime('%Y-%m-%d')
         self.three_days_prior_year = int(self.three_days_prior_datetime.strftime('%Y'))
 
@@ -1681,7 +1690,7 @@ class DateEntry(tkinter.Frame):
                 else:
                     month = str(month)
                 date_string = str(year)+'-'+month+'-'+day
-                entry_datetime = datetime.datetime.strptime(date_string, '%Y-%m-%d')
+                entry_datetime = datetime.strptime(date_string, '%Y-%m-%d')
                 # Ensure date is no later than 2 days prior to current date
                 if self.gridded is False:
                     if entry_datetime > self.two_days_prior_datetime:

@@ -34,8 +34,9 @@
 ##  ------------------------------- ##
 ##      Writen by: Jason Deters     ##
 ##      Edited by: Joseph Gutenson  ##
+##      Edited by: Chase Hamilton   ##
 ##  ------------------------------- ##
-##    Last Edited on: 2021-11-16    ##
+##    Last Edited on: 2022-11-10    ##
 ##  ------------------------------- ##
 ######################################
 
@@ -43,13 +44,13 @@
 import os
 import sys
 import time
-import datetime
+from datetime import datetime, timedelta
 import multiprocessing
 import traceback
 import warnings
 import pickle
 import stat
-from operator import itemgetter
+#from operator import itemgetter # No longer used
 
 # Get root folder
 MODULE_PATH = os.path.dirname(os.path.realpath(__file__))
@@ -68,7 +69,7 @@ import pandas
 import ulmo
 from geopy.distance import great_circle
 import matplotlib.pyplot as plt
-from matplotlib.legend_handler import HandlerLine2D
+#from matplotlib.legend_handler import HandlerLine2D # No longer used
 import matplotlib.dates as dates
 import matplotlib.ticker as ticker
 from matplotlib import rcParams
@@ -86,7 +87,7 @@ try:
     from . import getElev
     from . import station_manager
     from . import get_forecast
-    from . import get_all
+    #from . import get_all # No longer used
     from .utilities import JLog
     from .utilities import web_wimp_scraper
     from . import netcdf_parse_all
@@ -97,7 +98,7 @@ except Exception:
     import getElev
     import station_manager
     import get_forecast
-    import get_all
+    #import get_all # No longer used
     # Add utilities folder to path directly
     PYTHON_SCRIPTS_FOLDER = os.path.join(ROOT, 'Python Scripts')
     TEST = os.path.exists(PYTHON_SCRIPTS_FOLDER)
@@ -774,7 +775,7 @@ class Main(object):
         self.log.print_section('MULTIPROCESSING FINISH')
         count_copy = enqueue_count
         timer_list = []
-        timer_list.append([time.clock(), count_copy])
+        timer_list.append([datetime.now(), count_copy])
         self.log.Wrap('Waiting for sub-processes to download stations:')
         while count_copy > 0:
             # Keep # Minions at original num_minions
@@ -802,10 +803,10 @@ class Main(object):
                 # Discern avg. pace and approximate time remaining
                 if count_copy < enqueue_count:
                     try:
-                        timer_list.append([time.clock(), count_copy])
+                        timer_list.append([datetime.now(), count_copy])
                         if len(timer_list) > 20:
                             timer_list.remove(timer_list[0])
-                        time_taken = time.clock() - timer_list[0][0]
+                        time_taken = datetime.now() - timer_list[0][0]
                         tasks_complete = timer_list[0][1] - count_copy
                         seconds_per_task = time_taken/tasks_complete
                         seconds_remaining = count_copy * seconds_per_task
@@ -822,7 +823,7 @@ class Main(object):
                 # Discern avg. pace and approximate time remaining
                 if count_copy < enqueue_count:
                     try:
-                        time_taken = time.clock() - timer_list[0][0]
+                        time_taken = datetime.now() - timer_list[0][0]
                         tasks_complete = timer_list[0][1] - count_copy
                         seconds_per_task = time_taken/tasks_complete
                         seconds_remaining = count_copy * seconds_per_task
@@ -1199,7 +1200,7 @@ class Main(object):
                 self.log.Wrap('No null values within self.finalDF')
 
             else:
-                if self.data_type is not 'PRCP':
+                if self.data_type != 'PRCP':
                     self.log.Wrap('Since this is not for PRCP... filling null values with "0" to allow graph output...')
                     self.finalDF.fillna(0, inplace=True)
                     if self.finalDF.isnull().sum().sum() < 1:
@@ -1383,8 +1384,8 @@ class Main(object):
         for item in Dates:
             if self.dates.observation_date in str(item):
                 first_point_datetime = item
-        second_point_datetime = first_point_datetime - datetime.timedelta(days=30)
-        third_point_datetime = second_point_datetime - datetime.timedelta(days=30)
+        second_point_datetime = first_point_datetime - timedelta(days=30)
+        third_point_datetime = second_point_datetime - timedelta(days=30)
         first_point_x_date_string = str(first_point_datetime)[:10]
         second_point_x_date_string = str(second_point_datetime)[:10]
         third_point_x_date_string = str(third_point_datetime)[:10]
@@ -1633,11 +1634,15 @@ class Main(object):
                 self.log.Wrap(traceback.format_exc())
 
         # Pickle values for graph_test if in Dev environment
-        if sys.executable == r'D:\Code\Python\WinPythonARC\WinPythonZero32\python-3.6.5\python.exe':
+        #if sys.executable == r'D:\Code\Python\WinPythonARC\WinPythonZero32\python-3.6.5\python.exe':
+        if True:
             pickle_folder = os.path.join(ROOT, 'cached')
             pickle_path = os.path.join(pickle_folder, 'graph_demo_data.pickle')
             pickle_list = [Dates,
+                           self.cdf_instance,
+                           longRolling30day,
                            rolling30day,
+                           self.dates,
                            self.dates.graph_start_date,
                            self.finalDF,
                            self.dates.graph_end_date,
@@ -1720,6 +1725,8 @@ class Main(object):
             ax4.axis('tight')
 
         # Create a truncated date range to allow for incomplete current water years
+        print(Dates.shape)
+        
         truncate = str(Dates[len(rolling30day)-1])[:10]
         truncDates = pandas.date_range(self.dates.graph_start_date, truncate)
 
@@ -1773,8 +1780,8 @@ class Main(object):
             yMax = self.yMax
 
         # Force the Min and Max X Values to the Graph Dates
-        graph_start_datetime = datetime.datetime.strptime(self.dates.graph_start_date, '%Y-%m-%d')
-        graph_end_datetime = datetime.datetime.strptime(self.dates.graph_end_date, '%Y-%m-%d')
+        graph_start_datetime = datetime.strptime(self.dates.graph_start_date, '%Y-%m-%d')
+        graph_end_datetime = datetime.strptime(self.dates.graph_end_date, '%Y-%m-%d')
         ax1.set_xlim([graph_start_datetime, graph_end_datetime])
 
         # Configure Labels
@@ -1796,9 +1803,12 @@ class Main(object):
 #                          ' Historical Climatology Network - Rainfall Data',
 #                          fontsize=20)
 
-            if first_point_y_rolling_total is not None:
+            if first_point_y_rolling_total:
                 first_point_label = first_point_x_date_string
-                ax1.annotate(first_point_label, xy=(first_point_x_date_string, first_point_y_rolling_total), xycoords='data',
+                ax1.annotate(first_point_label,
+                             xy=(pandas.Timestamp(first_point_x_date_string),
+                                                  first_point_y_rolling_total),
+                             xycoords='data',
                              xytext=first_point_xytext,
                              textcoords='offset points',
                              size=13,
@@ -1808,9 +1818,12 @@ class Main(object):
                                              connectionstyle="arc3,rad=0.5"),
                             )
 
-            if second_point_y_rolling_total is not None:
+            if second_point_y_rolling_total:
                 second_point_label = second_point_x_date_string
-                ax1.annotate(second_point_label, xy=(second_point_x_date_string, second_point_y_rolling_total), xycoords='data',
+                ax1.annotate(second_point_label,
+                             xy=(pandas.Timestamp(second_point_x_date_string),
+                                 second_point_y_rolling_total),
+                             xycoords='data',
                              xytext=second_point_xytext,
                              textcoords='offset points',
                              size=13,
@@ -1820,9 +1833,12 @@ class Main(object):
                                              connectionstyle="arc3,rad=0.5"),
                             )
 
-            if third_point_y_rolling_total is not None:
+            if third_point_y_rolling_total:
                 third_point_label = third_point_x_date_string
-                ax1.annotate(third_point_label, xy=(third_point_x_date_string, third_point_y_rolling_total), xycoords='data',
+                ax1.annotate(third_point_label,
+                             xy=(pandas.Timestamp(third_point_x_date_string),
+                                                  third_point_y_rolling_total),
+                             xycoords='data',
                              xytext=third_point_xytext,
                              textcoords='offset points',
                              size=13,

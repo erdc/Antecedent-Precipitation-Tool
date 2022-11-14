@@ -82,7 +82,7 @@ import os
 import sys
 import time
 import traceback
-import datetime
+from datetime import datetime
 import subprocess
 import pickle
 
@@ -190,7 +190,7 @@ class wimp_checker(object):
 #            log.Wrap("  Supplying today's date as the 'Project Title' and hitting 'Return'")
             title_element = self.driver.find_element('name', 'yname')
             # Type Current Date in Input Box
-            current_date = datetime.datetime.now()
+            current_date = datetime.now()
             current_date_string = current_date.strftime("%Y-%m-%d")
             title_string = 'ARC Request - {}'.format(current_date_string)
             title_element.clear()
