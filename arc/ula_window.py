@@ -31,18 +31,9 @@
 
 import os
 import sys
-import time
 import tkinter
 import tkinter.ttk
 import subprocess
-
-# Custom Libraries
-try:
-    from arc import shortcut
-    from arc import get_all
-except Exception:
-    import shortcut
-    import get_all
 
 
 USACE_ULA_TEXT = """This software was developed by United States Army Corps of Engineers (USACE)

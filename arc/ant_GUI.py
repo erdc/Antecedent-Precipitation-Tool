@@ -54,9 +54,7 @@ import tkinter.ttk
 import tkinter.filedialog
 import os
 import sys
-import shutil
 import subprocess
-import traceback
 from datetime import datetime, timedelta
 import ftplib
 
