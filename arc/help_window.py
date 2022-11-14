@@ -50,12 +50,10 @@ import webbrowser
 
 # Custom Libraries
 try:
-    from . import get_all
     from . import get_files
     from .utilities import JLog
 except Exception:
     #  Maintains compatibility with previous non-compiled versions
-    import get_all
     import get_files
     # Reverse compatibility step - Add utilities folder to path directly
     MODULE_PATH = os.path.dirname(os.path.realpath(__file__))

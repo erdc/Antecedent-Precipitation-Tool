@@ -49,7 +49,6 @@ by selected type and date range.
 # Import built-in modules
 import os
 import sys
-import traceback
 import time
 
 # Import third-party modules

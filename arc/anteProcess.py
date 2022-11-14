@@ -87,7 +87,6 @@ try:
     from . import getElev
     from . import station_manager
     from . import get_forecast
-    #from . import get_all # No longer used
     from .utilities import JLog
     from .utilities import web_wimp_scraper
     from . import netcdf_parse_all
@@ -98,7 +97,6 @@ except Exception:
     import getElev
     import station_manager
     import get_forecast
-    #import get_all # No longer used
     # Add utilities folder to path directly
     PYTHON_SCRIPTS_FOLDER = os.path.join(ROOT, 'Python Scripts')
     TEST = os.path.exists(PYTHON_SCRIPTS_FOLDER)
