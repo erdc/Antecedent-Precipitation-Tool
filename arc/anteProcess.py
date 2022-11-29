@@ -757,6 +757,7 @@ class Main(object):
                                                                         weightedDiff,
                                                                         self.dates.normal_period_data_start_date,
                                                                         self.dates.actual_data_end_date,
+                                                                        self.dates.observation_date,
                                                                         self.dates.antecedent_period_start_date)
                         constructor_class_list.append(constructor_class)
         enqueue_count = 0
