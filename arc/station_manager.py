@@ -100,12 +100,14 @@ class Constructor(object):
         self.weightedDiff = weightedDiff
         self.StartDate = StartDate
         self.EndDate = EndDate
+        self.ObservationDate = ObservationDate
         self.currentRollingStartDate = currentRollingStartDate
 
     def __call__(self):
         aclass = Main(self.dataType, self.index, self.name, self.location, self.locationTuple,
                       self.elevation, self.distance, self.elevDiff, self.weightedDiff,
-                      self.StartDate, self.EndDate, self.currentRollingStartDate)
+                      self.StartDate, self.EndDate, self.ObservationDate,
+                      self.currentRollingStartDate)
         return aclass
 
 
@@ -117,7 +119,7 @@ class Main(object):
     by selected type and date range.
     """
     def __init__(self, dataType, index, name, location, locationTuple, elevation,
-                 distance, elevDiff, weightedDiff, StartDate, EndDate,
+                 distance, elevDiff, weightedDiff, StartDate, EndDate, ObservationDate,
                  currentRollingStartDate):
         self.L = JLog.PrintLog()
         self.dataType = dataType
@@ -131,6 +133,7 @@ class Main(object):
         self.weightedDiff = round(float(weightedDiff), 3)
         self.StartDate = StartDate
         self.EndDate = EndDate
+        self.observationDate = ObservationDate
         self.currentRollingStartDate = currentRollingStartDate
         self.data = None
         self.Values = None
@@ -202,7 +205,7 @@ class Main(object):
                 self.actual_rows = num_rows - num_null
                 # Slicing just current year rows to perform separate tests
                 df_copy = self.Values.copy()
-                current_values = df_copy.loc[self.currentRollingStartDate:self.EndDate]
+                current_values = df_copy.loc[self.currentRollingStartDate:self.ObservationDate]
                 current_values.replace('', numpy.nan, inplace=True)
                 current_values.dropna(inplace=True)
                 current_num_rows = len(current_values.index)
