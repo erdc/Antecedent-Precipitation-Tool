@@ -41,38 +41,39 @@
 
 # Standard Libraries
 import csv
-from datetime import datetime
-from functools import lru_cache
 import glob
 import io
+import multiprocessing
 import os
 import time
 import traceback
+from datetime import datetime
+from functools import lru_cache
+
+import dask
+import fsspec
 
 # External Libraries
 import geopandas as gpd
+
+# from shapely.geometry import Point
+import netCDF4
 
 # import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import requests
-from geopy.distance import great_circle
-
-# from shapely.geometry import Point
-import netCDF4
-from simplekml import Kml
 import xarray as xr
-import fsspec
-from tqdm import tqdm
-import dask
 from dask.diagnostics import ProgressBar
-import multiprocessing
+from geopy.distance import great_circle
+from simplekml import Kml
+from tqdm import tqdm
 
 # Internal Imports
 try:
-    from arc.utils import setup_logger, ini_config, find_file_or_dir
+    from arc.utils import find_file_or_dir, ini_config, setup_logger
 except:
-    from utils import setup_logger, ini_config, find_file_or_dir
+    from utils import find_file_or_dir, ini_config, setup_logger
 
 logger = setup_logger()
 
@@ -83,6 +84,7 @@ default = {
         "MAX_SEARCH_RANGE": 100,
         "REF_GAGES_ONLY": 0,
         "ENABLE_NWM_CALC": 1,
+        "ENABLE_USGS_CALC": 1,
         "NWM_TIMEOUT_MINS": 60,
         "MTF_CONVERSION_FAC": 35.3147,
     }
@@ -94,6 +96,7 @@ NUM_LOCAL_GAGES = config.getint("local_norm", "NUM_LOCAL_GAGES")
 MAX_SEARCH_RANGE = config.getint("local_norm", "MAX_SEARCH_RANGE")
 REF_GAGES_ONLY = config.getboolean("local_norm", "REF_GAGES_ONLY")
 ENABLE_NWM_CALC = config.getint("local_norm", "ENABLE_NWM_CALC")
+ENABLE_USGS_CALC = config.getint("local_norm", "ENABLE_USGS_CALC")
 MTF_CONVERSION_FAC = config.getfloat("local_norm", "MTF_CONVERSION_FAC")
 NWM_TIMEOUT_MINS = config.getint("local_norm", "NWM_TIMEOUT_MINS")
 
@@ -212,62 +215,26 @@ def calc_stats(flow_df, period_end="2010-12-31"):
     return cleanup_stats_df(stats_df)
 
 
-def calc_percentile(flow, stats_df, date):
-    """
-    Calculate the percentile rank of a given flow value based on predefined percentile values.
+def calc_percentile(flow, df, date):
+    # Ensure the DataFrame is sorted by time
+    df = df.sort_values(by="time")
+    df["time"] = pd.to_datetime(df["time"])
 
-    Parameters:
-    - flow_value (float): The flow value for which to calculate the percentile rank.
-    - percentile_stats (DataFrame): A pandas DataFrame containing the predefined percentile values.
-
-    Returns:
-    - float: The percentile rank of the flow value.
-    """
+    # Filter df
     date = pd.to_datetime(date)
     day_of_year = date.strftime("%m-%d")
-    percentile_stats = stats_df.loc[stats_df["day"] == day_of_year]
-    # extract the predefined percentile values
-    min_va = float(percentile_stats["min"].values[0])
-    p10_va = float(percentile_stats["p10"].values[0])
-    p05_va = float(percentile_stats["p05"].values[0])
-    p20_va = float(percentile_stats["p20"].values[0])
-    p25_va = float(percentile_stats["p25"].values[0])
-    p50_va = float(percentile_stats["p50"].values[0])
-    p75_va = float(percentile_stats["p75"].values[0])
-    p80_va = float(percentile_stats["p80"].values[0])
-    p90_va = float(percentile_stats["p90"].values[0])
-    p95_va = float(percentile_stats["p95"].values[0])
-    max_va = float(percentile_stats["max"].values[0])
-    # print(min_va, p05_va, p10_va, p20_va, p25_va, p50_va, p75_va, p80_va, p90_va, p95_va, max_va)
-    # calculate the percentile rank based on the flow value
-    if flow <= min_va:
-        percentile = 0
-    elif flow >= max_va:
-        percentile = 100
-    elif (flow > min_va) and (flow <= p05_va):
-        percentile = linear_interpolation(flow, min_va, 0, p05_va, 5)
-    elif (flow > p05_va) and (flow <= p10_va):
-        percentile = linear_interpolation(flow, p05_va, 5, p10_va, 10)
-    elif (flow > p10_va) and (flow <= p20_va):
-        percentile = linear_interpolation(flow, p10_va, 10, p20_va, 20)
-    elif (flow > p20_va) and (flow <= p25_va):
-        percentile = linear_interpolation(flow, p20_va, 20, p25_va, 25)
-    elif (flow > p25_va) and (flow <= p50_va):
-        percentile = linear_interpolation(flow, p25_va, 25, p50_va, 50)
-    elif (flow > p50_va) and (flow <= p75_va):
-        percentile = linear_interpolation(flow, p50_va, 50, p75_va, 75)
-    elif (flow > p75_va) and (flow <= p80_va):
-        percentile = linear_interpolation(flow, p75_va, 75, p80_va, 80)
-    elif (flow > p80_va) and (flow <= p90_va):
-        percentile = linear_interpolation(flow, p80_va, 80, p90_va, 90)
-    elif (flow > p90_va) and (flow <= p95_va):
-        percentile = linear_interpolation(flow, p90_va, 90, p95_va, 95)
-    elif (flow > p95_va) and (flow <= max_va):
-        percentile = linear_interpolation(flow, p95_va, 95, max_va, 100)
-    else:
-        # this should not happen, but it's a safeguard
-        percentile = -1
-    return round(percentile, 3)
+    filtered_df = df[df["time"].dt.strftime("%m-%d") == day_of_year]
+
+    # Skip bad data
+    if filtered_df["discharge"].nunique() <= 1:
+        return -1
+
+    # Calculate the percentile
+    percentile_rank = (
+        filtered_df[filtered_df["discharge"] <= flow].shape[0] / filtered_df.shape[0]
+    ) * 100
+
+    return round(percentile_rank, 3)
 
 
 # ### USGS FUNCTIONS ###
@@ -318,7 +285,7 @@ def get_usgs_flow(gage_id, date):
         return df
 
     except Exception as e:
-        print(f"Error retrieving flow for gage ID {gage_id}: {str(e)}")
+        logger.error(f"Error retrieving flow for gage ID {gage_id}: {str(e)}")
         return pd.DataFrame()
 
 
@@ -393,7 +360,12 @@ def local_norm_usgs(lat, lon, date, save_path=None):
             percentile_stats["gageid"] = gage_id
             percentile_stats["flow (f3/s)"] = flow
 
-            perc = calc_percentile(flow, stat_df, date)
+            perc = calc_percentile(flow, flow_df, date)
+
+            # skip bad data
+            if perc == -1:
+                continue
+
             percentile_stats["flow percentile"] = perc
             summary_df = pd.concat([summary_df, percentile_stats], ignore_index=True)
             if perc is not None:
@@ -509,7 +481,8 @@ def download_nwm_flow(date, data_dir="data"):
 
         return 0
 
-    except:
+    except Exception as e:
+        logger.error(f"Error retrieving nwm flow on {date}: {str(e)}")
         return -1
 
 
@@ -589,13 +562,26 @@ def get_nwm_flow(comid_list, date, data_dir="data"):
         except ValueError:
             raise ValueError("Incorrect date format, should be YYYY-MM-DD")
 
-    download_nwm_flow(date, data_dir)
+    download_attempt = 0
+    while download_attempt < 3:
+        ret = download_nwm_flow(date, data_dir)
+        if ret == 0:
+            break
+        else:
+            download_attempt += 1
+
+    if download_attempt >= 3:
+        logger.warn("nwm flow data download attempts exceeded 3")
+
     date_str = date.strftime("%Y%m%d")
     nc_filepath = find_file_or_dir(os.getcwd(), f"nwm_data_{date_str}.nc")
 
     ds = netCDF4.Dataset(nc_filepath)
     streamflow = ds.variables["streamflow"]
     feature_id = ds.variables["feature_id"]
+
+    # source_unit = str(streamflow.units)
+    # print(source_unit)
 
     points = {}
     num_found = 0
@@ -608,14 +594,8 @@ def get_nwm_flow(comid_list, date, data_dir="data"):
 
         # Check if flow data is available and not missing
         if (flow != -999900) and not (np.ma.is_masked(flow)):
-            # Apply scale_factor and add_offset to get the actual flow value
-            actual_flow = (
-                flow * ds.variables["streamflow"].scale_factor
-                + ds.variables["streamflow"].add_offset
-            )
-
             # check if the conversion factor was meters to feet
-            actual_flow = round(float(actual_flow) * MTF_CONVERSION_FAC, 4)
+            actual_flow = round(float(flow) * MTF_CONVERSION_FAC, 4)
             if abs(MTF_CONVERSION_FAC - 35.3147) < 0.001:
                 unit = "f3/s"
             elif abs(MTF_CONVERSION_FAC - 1.0) < 0.001:
@@ -687,7 +667,12 @@ def local_norm_nwm(lat, lon, date, save_path=None):
             columns={df.columns[0]: "time", column: "discharge"}, inplace=True
         )
         stat_df = calc_stats(dataset_df)
-        perc = calc_percentile(flow, stat_df, date)
+        # perc = calc_percentile(flow, stat_df, date)
+        perc = calc_percentile(flow, dataset_df, date)
+
+        # skip bad data
+        if perc == -1:
+            continue
 
         day_of_year = pd.to_datetime(date).strftime("%m-%d")
         percentile_stats = stat_df.loc[stat_df["day"] == day_of_year].copy()
@@ -749,15 +734,16 @@ def local_norm_nwm(lat, lon, date, save_path=None):
 
 
 def local_norm(lat, lon, date, save_path=None):
-    local_norm_usgs(lat, lon, date, save_path)
+    if ENABLE_USGS_CALC:
+        local_norm_usgs(lat, lon, date, save_path)
     if ENABLE_NWM_CALC:
         local_norm_nwm(lat, lon, date, save_path)
 
 
 def test():
-    # lat, lon = 34.654, -89.887
-    lat, lon = 46.131, -93.780
-    date = "2022-07-01"
+    lat, lon = 30, -90
+
+    date = "2022-11-01"
     try:
         data_dir = find_file_or_dir(os.getcwd(), "data")
     except:
@@ -843,4 +829,4 @@ if __name__ == "__main__":
     test()
     end_time = time.time()
     elapsed_time = end_time - start_time
-    print(f"elapsed time: {round(elapsed_time, 2)} seconds")
+    print(f"elapsed time: {round(elapsed_time, 2)} seconds\n")
