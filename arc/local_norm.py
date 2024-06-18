@@ -460,7 +460,7 @@ def download_nwm_flow(date, data_dir="data"):
     # Construct the URL for the Analysis and Assimilation data
     base_url = "https://noaanwm.blob.core.windows.net/nwm"
     # file_name = f"nwm.{date_str}/short_range/nwm.t00z.short_range.channel_rt.f001.conus.nc"
-    file_name = f"nwm.{date_str}/analysis_assim/nwm.t00z.analysis_assim.channel_rt.tm00.conus.nc"
+    file_name = f"nwm.{date_str}/forcing_analysis_assimi/nwm.t00z.forcing_analysis_assimi.channel_rt.tm00.conus.nc"
     url = f"{base_url}/{file_name}"
 
     try:
