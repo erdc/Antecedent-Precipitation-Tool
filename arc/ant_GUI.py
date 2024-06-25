@@ -45,18 +45,17 @@
 Graphical user interface for the Antecedent Precipitation Tool
 """
 
+import ftplib
+import os
 import pickle
-
+import subprocess
+import sys
 
 # Import Standard Libraries
 import tkinter
-import tkinter.ttk
 import tkinter.filedialog
-import os
-import sys
-import subprocess
+import tkinter.ttk
 from datetime import datetime, timedelta
-import ftplib
 
 # Import 3rd-Party Libraries
 import PyPDF2
@@ -69,26 +68,28 @@ ROOT = os.path.split(MODULE_PATH)[0]
 
 # Import Custom Libraries
 try:
-    from . import anteProcess
-    from . import huc_query
-    from . import custom_watershed_query
-    from . import check_usa
-    from . import watershed_summary
-    from . import help_window
-    from . import get_all
-    from . import netcdf_parse_all
-    from .utilities import JLog
+    from . import (
+        anteProcess,
+        check_usa,
+        custom_watershed_query,
+        get_all,
+        help_window,
+        huc_query,
+        netcdf_parse_all,
+        watershed_summary,
+    )
     from .local_norm import local_norm
+    from .utilities import JLog
 except Exception:
     # Old unfrozen version backwards compatibility step
     import anteProcess
-    import huc_query
-    import custom_watershed_query
     import check_usa
-    import watershed_summary
-    import help_window
+    import custom_watershed_query
     import get_all
+    import help_window
+    import huc_query
     import netcdf_parse_all
+    import watershed_summary
     from utilities import JLog
 
 """
@@ -1367,12 +1368,12 @@ class AntGUI(object):
         # Test whether or not all parameters are valid
         parameters_valid = True
         try:
-            float(latitude)
+            latitude = round(float(latitude), 5)
         except Exception:
             self.L.Wrap("Latitude must be in decimal degree format!")
             parameters_valid = False
         try:
-            float(longitude)
+            longitude = round(float(longitude), 5)
         except Exception:
             self.L.Wrap("Longitude must be in decimal degree format!")
             parameters_valid = False
