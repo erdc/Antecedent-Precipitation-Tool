@@ -459,8 +459,10 @@ def download_nwm_flow(date, data_dir="data"):
 
     # Construct the URL for the Analysis and Assimilation data
     base_url = "https://noaanwm.blob.core.windows.net/nwm"
-    # file_name = f"nwm.{date_str}/short_range/nwm.t00z.short_range.channel_rt.f001.conus.nc"
-    file_name = f"nwm.{date_str}/forcing_analysis_assimi/nwm.t00z.forcing_analysis_assimi.channel_rt.tm00.conus.nc"
+    file_name = (
+        f"nwm.{date_str}/short_range/nwm.t00z.short_range.channel_rt.f001.conus.nc"
+    )
+    # file_name = f"nwm.{date_str}/forcing_analysis_assimi/nwm.t00z.forcing_analysis_assimi.channel_rt.tm00.conus.nc"
     url = f"{base_url}/{file_name}"
 
     try:
@@ -567,8 +569,9 @@ def get_nwm_flow(comid_list, date, data_dir="data"):
         ret = download_nwm_flow(date, data_dir)
         if ret == 0:
             break
-        else:
-            download_attempt += 1
+        elif ret != -1:
+            logger.warn(f"download attempt returned code: {ret}")
+        download_attempt += 1
 
     if download_attempt >= 3:
         logger.warn("nwm flow data download attempts exceeded 3")
