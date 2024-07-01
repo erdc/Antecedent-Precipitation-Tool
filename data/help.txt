@@ -1,4 +1,33 @@
-To report errors with this program, click the "Report Issue" button or email:  
-APT-Report-Issue@usace.army.mil
+Resolving Common Issues and Errors with the APT 
 
-FaQ to be implemented...
+The APT user interface briefly flashes and will not open when trying to open the APT. 
+
+ + The APT’s contents haven’t been fully extracted from the .7z folder downloaded from GitHub. Do not open the files from within the .7z folder without extracting first. 
+
+ + The APT’s contents have been extracted to somewhere other than the C: drive (e.g., in My Documents, My Downloads, or Desktop). Extract all contents of the APT to somewhere on your C: drive. 
+
+ + The APT’s contents were extracted to a shared or network drive (e.g., OneDrive). Extract all contents of the APT to somewhere on your C: drive. 
+
+ + The user is not currently connected to the internet. Ensure you have an internet connection, 
+
+ + The user has an internet connection, but the VPN is blocking access. Try disconnecting from your VPN and rerunning the APT. 
+
+The APT continuously scrolls through “Searching for primary station… No suitable primary station locations were found by the APT.” 
+
+There are no nearby stations for the APT to complete the analysis. Use the gridded precipitation dataset.  
+
+Error: Null values remain after interpolation…the APT cannot complete this analysis.  
+
+There was not enough precipitation data to build the 30-year record because there were either 1) not enough stations or 2) all stations are missing the same days of data. Close the APT, reboot, and try again. If that doesn’t resolve the error, use the gridded precipitation dataset.  
+
+Error: National Map EPQS Server Offline. 
+
+The APT needs the elevation data from that service to ensure that it is selecting the most appropriate primary and secondary weather stations for the analysis. This service is operated and maintained by USGS. Generally, services are back online within 24 hours. Users can check the status of the service here: https://stats.uptimerobot.com/gxzRZFARLZ/793824472. Close the APT, and retry after the USGS services are back online. 
+
+Error: NOAA’s server is offline. Request terminated, as weather data is currently inaccessible. 
+
+Precipitation data for the APT originates from a NOAA server. Close the APT, and retry after the services are back online. 
+
+Error: RuntimeError: PROJ: proj_identify: Cannot find proj.db 
+
+Please check with your IT or network security provider to ensure that the recent changes to your security policy have not been changed.  

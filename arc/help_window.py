@@ -71,17 +71,22 @@ except Exception:
 
 # Internal Imports
 try:
-    from arc.utils import find_file_or_dir
+    from arc.utils import find_file_or_dir, setup_logger
 except:
-    from utils import find_file_or_dir
+    from utils import find_file_or_dir, setup_logger
 
-ABOUT_HELP_TEXT = ""
+logger = setup_logger()
 
 try:
     help_path = find_file_or_dir(os.getcwd(), "help.txt")
-    with open(help_path, "r") as file:
-        ABOUT_HELP_TEXT = file.read()
+
+    # read in file and decode weird characters
+    with open(help_path, "rb") as file:
+        content_bytes = file.read()
+    ABOUT_HELP_TEXT = content_bytes.decode("utf-8", errors="ignore")
+
 except Exception as e:
+    logger.warn(f"error loading helptext: {e}")
     ABOUT_HELP_TEXT = """To report errors with this program, click the "Report Issue" button or email:  
 APT-Report-Issue@usace.army.mil"""
 
