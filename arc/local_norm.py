@@ -564,6 +564,12 @@ def get_nwm_flow(comid_list, date, data_dir="data"):
         except ValueError:
             raise ValueError("Incorrect date format, should be YYYY-MM-DD")
 
+    # Check if the year is before 2022
+    if date.year < 2022:
+        raise ValueError(
+            "2022 earliest NWM analysis can be run, limited forcast data before 2022"
+        )
+
     download_attempt = 0
     while download_attempt < 3:
         ret = download_nwm_flow(date, data_dir)
