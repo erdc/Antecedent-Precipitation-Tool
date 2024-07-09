@@ -357,7 +357,7 @@ class AntGUI(object):
             image=self.folder_image,
         )
         self.ENTRY_OUTPUT_FOLDER = tkinter.ttk.Entry(self.master)
-        default_save_folder = os.path.join(ROOT, "Outputs")
+        default_save_folder = os.path.join(ROOT, "..", "Outputs")
         self.ENTRY_OUTPUT_FOLDER.insert(0, default_save_folder)
         self.ENTRY_IMAGE_NAME = tkinter.ttk.Entry(self.master)
         self.ENTRY_IMAGE_SOURCE = tkinter.ttk.Entry(self.master)

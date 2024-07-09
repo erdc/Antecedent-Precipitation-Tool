@@ -41,16 +41,17 @@
 ##  ------------------------------- ##
 ######################################
 
+import multiprocessing
+
 # Import Standard Libraries
 import os
-import sys
-import time
-from datetime import datetime, timedelta
-import multiprocessing
-import traceback
-import warnings
 import pickle
 import stat
+import sys
+import time
+import traceback
+import warnings
+from datetime import datetime, timedelta
 
 # from operator import itemgetter # No longer used
 
@@ -63,20 +64,20 @@ warnings.filterwarnings("ignore")
 
 # Import 3rd Party Libraries
 
-import requests
-import urllib3
 import json
-import numpy
-import pandas
-import ulmo
-from geopy.distance import great_circle
-import matplotlib.pyplot as plt
 
 # from matplotlib.legend_handler import HandlerLine2D # No longer used
 import matplotlib.dates as dates
+import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-from matplotlib import rcParams
+import numpy
+import pandas
 import pylab
+import requests
+import ulmo
+import urllib3
+from geopy.distance import great_circle
+from matplotlib import rcParams
 
 # Stop annoying urllib3 errors for EPQS tests
 # import logging
@@ -84,22 +85,23 @@ import pylab
 
 # Import Custom Modules
 try:
-    from . import query_climdiv
-    from . import process_manager
-    from . import date_calcs
-    from .getElev import get_elevation, batch
-    from . import station_manager
-    from . import get_forecast
-    from .utilities import JLog
-    from .utilities import web_wimp_scraper
-    from . import netcdf_parse_all
+    from . import (
+        date_calcs,
+        get_forecast,
+        netcdf_parse_all,
+        process_manager,
+        query_climdiv,
+        station_manager,
+    )
+    from .getElev import batch, get_elevation
+    from .utilities import JLog, web_wimp_scraper
 except Exception:
-    import query_climdiv
-    import process_manager
     import date_calcs
-    from getElev import get_elevation
-    import station_manager
     import get_forecast
+    import process_manager
+    import query_climdiv
+    import station_manager
+    from getElev import get_elevation
 
     # Add utilities folder to path directly
     PYTHON_SCRIPTS_FOLDER = os.path.join(ROOT, "Python Scripts")
@@ -114,8 +116,8 @@ except Exception:
         UTILITIES_FOLDER = os.path.join(ARC_FOLDER, "utilities")
         sys.path.append(UTILITIES_FOLDER)
     import JLog
-    import web_wimp_scraper
     import netcdf_parse_all
+    import web_wimp_scraper
 
 
 # FUNCTION DEFINITIONS
@@ -1643,8 +1645,20 @@ class AnteProcess(object):
         )
 
         # Append current year to prior year to create final output
-        normal_low_series = pandas.concat([prior_normal_low_series, current_normal_low_series, following_normal_low_series])
-        normal_high_series = pandas.concat([prior_normal_high_series, current_normal_high_series, following_normal_high_series])
+        normal_low_series = pandas.concat(
+            [
+                prior_normal_low_series,
+                current_normal_low_series,
+                following_normal_low_series,
+            ]
+        )
+        normal_high_series = pandas.concat(
+            [
+                prior_normal_high_series,
+                current_normal_high_series,
+                following_normal_high_series,
+            ]
+        )
 
         # CREATE ANNOTATIONS
         first_point_y_rolling_total = None
