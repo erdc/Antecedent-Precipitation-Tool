@@ -379,9 +379,26 @@ def local_norm_usgs(lat, lon, date, save_path=None):
                 point = kml.newpoint(
                     name=gage_id, coords=[loc_tuple], description=description
                 )
-                point.style.iconstyle.icon.href = (
-                    "http://maps.google.com/mapfiles/kml/paddle/blu-blank.png"
-                )
+                if perc > 80.0:
+                    point.style.iconstyle.icon.href = (
+                        "http://maps.google.com/mapfiles/kml/paddle/blu-blank.png"
+                    )
+                elif perc > 60.0:
+                    point.style.iconstyle.icon.href = (
+                        "http://maps.google.com/mapfiles/kml/paddle/ltblu-blank.png"
+                    )
+                elif perc > 40.0:
+                    point.style.iconstyle.icon.href = (
+                        "http://maps.google.com/mapfiles/kml/paddle/grn-blank.png"
+                    )
+                elif perc > 20.0:
+                    point.style.iconstyle.icon.href = (
+                        "http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png"
+                    )
+                else:
+                    point.style.iconstyle.icon.href = (
+                        "http://maps.google.com/mapfiles/kml/paddle/red-blank.png"
+                    )
                 num_found += 1
                 if num_found >= NUM_LOCAL_GAGES:
                     # Update the progress bar to its maximum value
@@ -392,7 +409,7 @@ def local_norm_usgs(lat, lon, date, save_path=None):
 
         point = kml.newpoint(name="QUERY POINT", coords=[(lon, lat)])
         point.style.iconstyle.icon.href = (
-            "http://maps.google.com/mapfiles/kml/paddle/grn-blank.png"
+            "http://maps.google.com/mapfiles/kml/shapes/arrow.png"
         )
         if save_path is not None:
             logger.info("Outputing processed data...")
@@ -710,13 +727,30 @@ def local_norm_nwm(lat, lon, date, save_path=None):
         point = kml.newpoint(
             name=str(column), coords=[loc_tuple], description=description
         )
-        point.style.iconstyle.icon.href = (
-            "http://maps.google.com/mapfiles/kml/paddle/blu-blank.png"
-        )
+        if perc > 80.0:
+            point.style.iconstyle.icon.href = (
+                "http://maps.google.com/mapfiles/kml/paddle/blu-blank.png"
+            )
+        elif perc > 60.0:
+            point.style.iconstyle.icon.href = (
+                "http://maps.google.com/mapfiles/kml/paddle/ltblu-blank.png"
+            )
+        elif perc > 40.0:
+            point.style.iconstyle.icon.href = (
+                "http://maps.google.com/mapfiles/kml/paddle/grn-blank.png"
+            )
+        elif perc > 20.0:
+            point.style.iconstyle.icon.href = (
+                "http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png"
+            )
+        else:
+            point.style.iconstyle.icon.href = (
+                "http://maps.google.com/mapfiles/kml/paddle/red-blank.png"
+            )
 
     point = kml.newpoint(name="QUERY POINT", coords=[(lon, lat)])
     point.style.iconstyle.icon.href = (
-        "http://maps.google.com/mapfiles/kml/paddle/grn-blank.png"
+        "http://maps.google.com/mapfiles/kml/shapes/arrow.png"
     )
 
     if save_path is not None:
