@@ -372,7 +372,7 @@ def local_norm_usgs(lat, lon, date, save_path=None):
                 progress_bar.update()
                 description = f"{local_gage_df.loc[local_gage_df['GAGEID'] == gage_id, 'STATION_NM'].values[0]}\n"
                 description += f"distance from point = {local_gage_df.loc[local_gage_df['GAGEID'] == gage_id, 'dist'].values[0]:.2f} mi\n"
-                description += f"\nGAGE CONDITION ON {date}:\n"
+                description += f"\nCONDITION ON {date}:\n"
                 description += f"flow = {flow} f3/s\n"
                 description += f"flow percentile= {perc:.1f}%\n"
 
@@ -409,7 +409,7 @@ def local_norm_usgs(lat, lon, date, save_path=None):
 
         point = kml.newpoint(name="QUERY POINT", coords=[(lon, lat)])
         point.style.iconstyle.icon.href = (
-            "http://maps.google.com/mapfiles/kml/shapes/arrow.png"
+            "http://maps.google.com/mapfiles/kml/paddle/purple-stars.png"
         )
         if save_path is not None:
             logger.info("Outputing processed data...")
@@ -750,7 +750,7 @@ def local_norm_nwm(lat, lon, date, save_path=None):
 
     point = kml.newpoint(name="QUERY POINT", coords=[(lon, lat)])
     point.style.iconstyle.icon.href = (
-        "http://maps.google.com/mapfiles/kml/shapes/arrow.png"
+        "http://maps.google.com/mapfiles/kml/paddle/purple-stars.png"
     )
 
     if save_path is not None:

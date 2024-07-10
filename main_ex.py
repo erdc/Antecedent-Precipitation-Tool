@@ -40,6 +40,7 @@
 
 # Import Standard Libraries
 import multiprocessing
+
 multiprocessing.freeze_support()
 
 # Import Custom Libraries
@@ -66,10 +67,12 @@ TITLE = r"""
      ymmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm+
 """
 
+
 def ula_window():
     # Launch ULA
     APP = arc.ula_window.UlaWindow()
     APP.run()
+
 
 def main():
     print(TITLE)
@@ -77,15 +80,16 @@ def main():
     APP = arc.ant_GUI.AntGUI()
     APP.run()
 
-if __name__ == '__main__':
-    # arc.get_all.get_latest_release()
-    # arc.get_all.ensure_antecdent_precipitation_tool_exe()
+
+if __name__ == "__main__":
+    # Setup
     arc.get_all.ensure_images()
     arc.get_all.ensure_wbd_folder()
     arc.get_all.ensure_us_shp_folder()
     arc.get_all.ensure_climdiv_folder()
     arc.get_all.ensure_WIMP()
     arc.get_all.ensure_binaries()
-    arc.shortcut.create_shortcut_frozen()
+
+    # Run graphics
     ula_window()
     main()

@@ -39,11 +39,12 @@
 ##  ------------------------------- ##
 ######################################
 
-import logging
-from logging.handlers import TimedRotatingFileHandler
 import configparser
-import os
 import glob
+import logging
+import os
+import platform
+from logging.handlers import TimedRotatingFileHandler
 
 
 def find_file_or_dir(search_dir, pattern, num_searches=2):
@@ -64,7 +65,7 @@ def find_file_or_dir(search_dir, pattern, num_searches=2):
 def ini_config(default, data_dir="data"):
     # find file
     try:
-        data_dir = find_file_or_dir(os.path.join(os.getcwd(), ".."), data_dir)
+        data_dir = find_file_or_dir(os.getcwd(), data_dir)
     except:
         data_dir = os.path.join(os.getcwd(), "data")
         os.makedirs(data_dir, exist_ok=True)

@@ -2031,11 +2031,11 @@ class AnteProcess(object):
             # Add Logo
             try:
                 images_folder = os.path.join(ROOT, "images")
-                logo_file = os.path.join(images_folder, "RD_2_0.png")
+                logo_file = os.path.join(images_folder, "RD_3_0.png")
                 logo = plt.imread(logo_file)
             except:
                 images_folder = os.path.join(sys.prefix, "images")
-                logo_file = os.path.join(images_folder, "RD_2_0.png")
+                logo_file = os.path.join(images_folder, "RD_3_0.png")
                 logo = plt.imread(logo_file)
             img = fig.figimage(X=logo, xo=118, yo=8)
 

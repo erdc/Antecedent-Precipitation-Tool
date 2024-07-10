@@ -30,10 +30,34 @@
 
 
 import os
+import platform
 import sys
+import time
 import tkinter
 import tkinter.ttk
-import subprocess
+
+try:
+    import utils
+except:
+    from . import utils
+
+if platform.system() == "Windows":
+    import winshell
+
+
+def create_shortcut():
+    # setup the paths
+    exe_path = utils.find_file_or_dir(os.getcwd(), "*main*.exe")
+    icon_path = utils.find_file_or_dir(os.getcwd(), "Graph.ico")
+    shortcut_path = os.path.join(winshell.desktop(), "Run APT.lnk")
+
+    # create the shprtcut
+    winshell.CreateShortcut(
+        Path=shortcut_path,
+        Target=exe_path,
+        Icon=(icon_path, 0),
+        Description="Antecedent Precipitation Tool",
+    )
 
 
 USACE_ULA_TEXT = """This software was developed by United States Army Corps of Engineers (USACE)
@@ -165,6 +189,7 @@ class UlaWindow(object):
             self.button_accept.config(state="disabled")
 
     def click_accept_button(self):
+        create_shortcut()
         self.master.destroy()  # Close ULA window
         self.write_ula_accepted_file()
 
@@ -186,7 +211,6 @@ class UlaWindow(object):
 
     def run(self):
         # Find "ula_accepted.txt"
-        count = 0
         module_path = os.path.dirname(os.path.realpath(__file__))
         root_folder = os.path.split(module_path)[0]
         ula_accepted_file = os.path.join(root_folder, "ula_accepted")
