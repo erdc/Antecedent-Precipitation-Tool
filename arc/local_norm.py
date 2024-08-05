@@ -358,8 +358,10 @@ def local_norm_usgs(lat, lon, date, save_path=None):
             day_of_year = pd.to_datetime(date).strftime("%m-%d")
             percentile_stats = stat_df.loc[stat_df["day"] == day_of_year].copy()
             percentile_stats["gageid"] = gage_id
-            percentile_stats["flow (f3/s)"] = flow
-
+            percentile_stats["flow (cfs)"] = flow
+            percentile_stats["distance (mi)"] = (
+                f"{local_gage_df.loc[local_gage_df['GAGEID'] == gage_id, 'dist'].values[0]:.2f}"
+            )
             perc = calc_percentile(flow, flow_df, date)
 
             # skip bad data
@@ -373,7 +375,7 @@ def local_norm_usgs(lat, lon, date, save_path=None):
                 description = f"{local_gage_df.loc[local_gage_df['GAGEID'] == gage_id, 'STATION_NM'].values[0]}\n"
                 description += f"distance from point = {local_gage_df.loc[local_gage_df['GAGEID'] == gage_id, 'dist'].values[0]:.2f} mi\n"
                 description += f"\nCONDITION ON {date}:\n"
-                description += f"flow = {flow} f3/s\n"
+                description += f"flow = {flow} cfs\n"
                 description += f"flow percentile= {perc:.1f}%\n"
 
                 point = kml.newpoint(
@@ -416,11 +418,11 @@ def local_norm_usgs(lat, lon, date, save_path=None):
             kml.save(os.path.join(save_path, f"USGS_STATS_{date}.kml"))
 
             summary_df = summary_df[
-                ["gageid", "day", "flow (f3/s)", "flow percentile"]
+                ["gageid", "day", "flow (cfs)", "flow percentile"]
                 + [
                     col
                     for col in summary_df.columns
-                    if col not in ["day", "gageid", "flow (f3/s)", "flow percentile"]
+                    if col not in ["day", "gageid", "flow (cfs)", "flow percentile"]
                 ]
             ]
 
@@ -441,7 +443,7 @@ def local_norm_usgs(lat, lon, date, save_path=None):
 
 def find_closest_comids(shapefile_path, lat, lon, max_dist=0):
     # Define the bounding box around the passed point
-    bbox = (lon - 0.05, lat - 0.05, lon + 0.05, lat + 0.05)
+    bbox = (lon - 0.5, lat - 0.5, lon + 0.5, lat + 0.5)
 
     # Load the shapefile and filter by the bounding box
     gdf = gpd.read_file(shapefile_path, bbox=bbox)
@@ -583,9 +585,8 @@ def get_nwm_flow(comid_list, date, data_dir="data"):
 
     # Check if the year is before 2022
     if date.year < 2022:
-        raise ValueError(
-            "2022 earliest NWM analysis can be run, limited forcast data before 2022"
-        )
+        print("2022 earliest NWM analysis can be run, limited forcast data before 2022")
+        return -1
 
     download_attempt = 0
     while download_attempt < 3:
@@ -623,7 +624,7 @@ def get_nwm_flow(comid_list, date, data_dir="data"):
             # check if the conversion factor was meters to feet
             actual_flow = round(float(flow) * MTF_CONVERSION_FAC, 4)
             if abs(MTF_CONVERSION_FAC - 35.3147) < 0.001:
-                unit = "f3/s"
+                unit = "cfs"
             elif abs(MTF_CONVERSION_FAC - 1.0) < 0.001:
                 unit = "m3/s"
             else:
@@ -655,9 +656,16 @@ def local_norm_nwm(lat, lon, date, save_path=None):
     data_dir = find_file_or_dir(os.getcwd(), "data")
     shapefile_path = find_file_or_dir(os.getcwd(), "comid_pos.shp")
     local_comids = find_closest_comids(shapefile_path, lat, lon)
+    if len(local_comids) == 0:
+        logger.error(
+            "\nNWM does not have enough data near point to complete an analysis."
+        )
+        return -1
 
     # get flow on observation date at local points
     flow_points = get_nwm_flow(local_comids, date)
+    if flow_points == -1:
+        return -1
     comid_list = [int(point["comid"]) for point in flow_points.values()]
     logger.debug(f"local comid: {comid_list}")
 
@@ -703,8 +711,15 @@ def local_norm_nwm(lat, lon, date, save_path=None):
         day_of_year = pd.to_datetime(date).strftime("%m-%d")
         percentile_stats = stat_df.loc[stat_df["day"] == day_of_year].copy()
         percentile_stats["comid"] = str(column)
-        percentile_stats["flow (f3/s)"] = flow
+        percentile_stats["flow (cfs)"] = flow
         percentile_stats["flow percentile"] = perc
+        local_dist = local_comids.loc[
+            local_comids["comid"] == int(column), "dist"
+        ].values
+        if len(local_dist) >= 1:
+            percentile_stats["distance (mi)"] = f"{local_dist[0]:.2f}"
+        else:
+            percentile_stats["distance (mi)"] = "-1"
         summary_df = pd.concat([summary_df, percentile_stats], ignore_index=True)
 
         # try to get the location of the comid, if not just use the observation point
@@ -718,7 +733,7 @@ def local_norm_nwm(lat, lon, date, save_path=None):
                 f"distance from point = {matching_comid['dist'].values[0]:.2f} mi\n"
             )
             description += f"\nCONDITION ON {date}:\n"
-            description += f"flow = {flow} f3/s\n"
+            description += f"flow = {flow} cfs\n"
             description += f"flow percentile= {perc:.1f}%\n"
         else:
             loc_tuple = (lon, lat)
@@ -753,16 +768,22 @@ def local_norm_nwm(lat, lon, date, save_path=None):
         "http://maps.google.com/mapfiles/kml/paddle/purple-stars.png"
     )
 
+    if len(summary_df) == 0:
+        logger.error(
+            "\nNWM does not have enough data near point to complete an analysis."
+        )
+        return -1
+
     if save_path is not None:
         logger.info("Outputing processed data...")
         kml.save(os.path.join(save_path, f"NWM_STATS_{date}.kml"))
 
         summary_df = summary_df[
-            ["comid", "day", "flow (f3/s)", "flow percentile"]
+            ["comid", "day", "flow (cfs)", "flow percentile"]
             + [
                 col
                 for col in summary_df.columns
-                if col not in ["day", "comid", "flow (f3/s)", "flow percentile"]
+                if col not in ["day", "comid", "flow (cfs)", "flow percentile"]
             ]
         ]
 
@@ -784,9 +805,10 @@ def local_norm(lat, lon, date, save_path=None):
 
 
 def test():
-    lat, lon = 30, -90
+    # lat, lon = 30, -90
+    lat, lon = 29.331518, -94.800046
 
-    date = "2022-11-01"
+    date = "2022-02-22"
     try:
         data_dir = find_file_or_dir(os.getcwd(), "data")
     except:

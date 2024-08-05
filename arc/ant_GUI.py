@@ -1967,6 +1967,22 @@ class AntGUI(object):
                             subprocess.Popen(result_pdf, shell=True)
                             # Open Output Folder
                             subprocess.Popen('explorer "{}"'.format(output_folder))
+
+                    # LOCAL NORM BEGIN (in batch mode)
+                    if self.flow_norm_analysis:
+                        self.L.print_section("CALCULATING LOCAL STREAMFLOW NORM")
+                        local_norm(
+                            float(current_input_list[1]),
+                            float(current_input_list[2]),
+                            f"{all_items[3]}-{all_items[4]}-{all_items[5]}",
+                            str(output_folder),
+                        )
+                        self.L.Wrap(f"Saved to {output_folder}")
+                        self.L.Wrap("")
+                        self.L.print_separator_line()
+                        self.L.Wrap("")
+                        self.L.Wrap("")
+                    # LOCAL NORM END
                 if watershed_scale != "Single Point":
                     if watershed_scale == "Custom Polygon":
                         huc = custom_watershed_name

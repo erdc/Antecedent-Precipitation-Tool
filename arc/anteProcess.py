@@ -2487,8 +2487,10 @@ if __name__ == "__main__":
     #               None,
     #               SAVE_FOLDER,
     #               False]
+    # INPUT_LIST = [["PRCP", "33.2098", "-87.5692", 2021, 10, 15, None, None, SAVE_FOLDER, False]]
+    save_path = os.path.join(os.getcwd(), "experimental")
     INPUT_LIST = [
-        ["PRCP", "33.2098", "-87.5692", 2021, 10, 15, None, None, SAVE_FOLDER, False]
+        ["PRCP", "40.28257", "-104.856019", 2024, 2, 23, None, None, save_path, False]
     ]
     for i in INPUT_LIST:
         INSTANCE.setInputs(
