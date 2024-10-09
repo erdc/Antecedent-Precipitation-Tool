@@ -10,5 +10,7 @@
 *.pickle
 *.log
 *.nc
+*.kml
 ula_accepted
-
+*historic*.csv
+*STATS*.csv

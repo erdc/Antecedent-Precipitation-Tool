@@ -894,4 +894,4 @@ if __name__ == "__main__":
     test()
     end_time = time.time()
     elapsed_time = end_time - start_time
-    print(f"elapsed time: {round(elapsed_time, 1)} seconds\n")
+    print(f"elapsed time: {elapsed_time:.1f} seconds\n")

@@ -83,12 +83,10 @@ def main():
 
 if __name__ == "__main__":
     # Setup
-    arc.get_all.ensure_images()
     arc.get_all.ensure_wbd_folder()
     arc.get_all.ensure_us_shp_folder()
     arc.get_all.ensure_climdiv_folder()
     arc.get_all.ensure_WIMP()
-    arc.get_all.ensure_binaries()
 
     # Run graphics
     ula_window()
