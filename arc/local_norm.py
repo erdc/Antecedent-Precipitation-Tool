@@ -368,7 +368,15 @@ def local_norm_usgs(lat, lon, date, save_path=None):
             if perc == -1:
                 continue
 
+            if perc > 75:
+                normalacy = "Wet/Above Normal"
+            elif perc >= 25:
+                normalacy = "Normal"
+            else:
+                normalacy = "Dry/Below Normal"
+
             percentile_stats["flow percentile"] = perc
+            percentile_stats["condition"] = normalacy
             summary_df = pd.concat([summary_df, percentile_stats], ignore_index=True)
             if perc is not None:
                 progress_bar.update()
@@ -377,6 +385,7 @@ def local_norm_usgs(lat, lon, date, save_path=None):
                 description += f"\nCONDITION ON {date}:\n"
                 description += f"flow = {flow} cfs\n"
                 description += f"flow percentile= {perc:.1f}%\n"
+                description += f"flow is {normalacy} \n"
 
                 point = kml.newpoint(
                     name=gage_id, coords=[loc_tuple], description=description
@@ -418,11 +427,18 @@ def local_norm_usgs(lat, lon, date, save_path=None):
             kml.save(os.path.join(save_path, f"USGS_STATS_{date}.kml"))
 
             summary_df = summary_df[
-                ["gageid", "day", "flow (cfs)", "flow percentile"]
+                ["gageid", "day", "flow (cfs)", "flow percentile", "condition"]
                 + [
                     col
                     for col in summary_df.columns
-                    if col not in ["day", "gageid", "flow (cfs)", "flow percentile"]
+                    if col
+                    not in [
+                        "day",
+                        "gageid",
+                        "flow (cfs)",
+                        "flow percentile",
+                        "condition",
+                    ]
                 ]
             ]
 
@@ -708,11 +724,19 @@ def local_norm_nwm(lat, lon, date, save_path=None):
         if perc == -1:
             continue
 
+        if perc > 75:
+            normalacy = "Wet/Above Normal"
+        elif perc >= 25:
+            normalacy = "Normal"
+        else:
+            normalacy = "Dry/Below Normal"
+
         day_of_year = pd.to_datetime(date).strftime("%m-%d")
         percentile_stats = stat_df.loc[stat_df["day"] == day_of_year].copy()
         percentile_stats["comid"] = str(column)
         percentile_stats["flow (cfs)"] = flow
         percentile_stats["flow percentile"] = perc
+        percentile_stats["condition"] = normalacy
         local_dist = local_comids.loc[
             local_comids["comid"] == int(column), "dist"
         ].values
@@ -735,6 +759,7 @@ def local_norm_nwm(lat, lon, date, save_path=None):
             description += f"\nCONDITION ON {date}:\n"
             description += f"flow = {flow} cfs\n"
             description += f"flow percentile= {perc:.1f}%\n"
+            description += f"flow is {normalacy} \n"
         else:
             loc_tuple = (lon, lat)
             description = "POINT HAD AN ERROR."
@@ -779,11 +804,12 @@ def local_norm_nwm(lat, lon, date, save_path=None):
         kml.save(os.path.join(save_path, f"NWM_STATS_{date}.kml"))
 
         summary_df = summary_df[
-            ["comid", "day", "flow (cfs)", "flow percentile"]
+            ["comid", "day", "flow (cfs)", "flow percentile", "condition"]
             + [
                 col
                 for col in summary_df.columns
-                if col not in ["day", "comid", "flow (cfs)", "flow percentile"]
+                if col
+                not in ["day", "comid", "flow (cfs)", "flow percentile", "condition"]
             ]
         ]
 

@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 # command to compile with this file: 
 #  pyinstaller main_ex.spec --noconfirm
+# note: If mkl_intel_thread.2.dll error uninstall and reinstall numpy with pip
 
 
 block_cipher = None
