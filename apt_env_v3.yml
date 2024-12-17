@@ -4,6 +4,7 @@ channels:
   - defaults
 dependencies:
   - python=3.10
+  - numpy=1.23.3
   - pip=24.0
   - gdal=3.8.5
   - netCDF4=1.6.5
