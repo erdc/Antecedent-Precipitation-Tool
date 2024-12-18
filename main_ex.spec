@@ -3,6 +3,12 @@
 #  pyinstaller main_ex.spec --noconfirm
 # note: If mkl_intel_thread.2.dll error uninstall and reinstall numpy with pip
 
+import os
+import sys
+
+# Construct the path to the distributed package from conda env path
+conda_env_path = sys.prefix
+distributed_path = os.path.join(conda_env_path, 'Lib', 'site-packages', 'distributed')
 
 block_cipher = None
 
@@ -11,7 +17,8 @@ added_files = [
     ('.\\data\\*', 'data'),
     ( '.\\version', '.' ),
     ( '.\\v\\main_ex', 'v' ),
-    ( '.\\proj.db', '.')
+    ( '.\\proj.db', '.'),
+    (distributed_path, 'distributed')
 ]
 
 a = Analysis(

@@ -9,7 +9,7 @@ dependencies:
   - gdal=3.8.5
   - netCDF4=1.6.5
   - s3fs>=2024
-  - dask>=2024
+  - dask=2024.8.2
   - fsspec>=2024
   - geopy=2.4.1
   - requests=2.31.0
@@ -22,8 +22,9 @@ dependencies:
   - selenium=4.20.0
   - matplotlib
   - pywin32
+  - pyinstaller=6.9.0
   - pip:
     - pyproj
     - geopandas
+    - fiona
     - winshell
-    - pyinstaller
