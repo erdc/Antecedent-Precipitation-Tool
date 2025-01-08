@@ -43,12 +43,12 @@
 import time
 from datetime import datetime
 
+import matplotlib.patheffects as path_effects
+import matplotlib.pyplot as plt
+
 # Import 3rd Party Libraries
 import numpy
-import matplotlib.pyplot as plt
 import pylab
-import matplotlib.patheffects as path_effects
-
 
 
 def parse_results(results_list):
@@ -259,7 +259,7 @@ def create_summary(site_lat, site_long, observation_date, geographic_scope, huc,
     from matplotlib import patheffects
 
     # Add Axis Titles
-    title_text_object = fig.suptitle('Antecedent Precipitation Tool v2.0 - Watershed Sampling Summary', fontsize=17, color='white')
+    title_text_object = fig.suptitle('Antecedent Precipitation Tool v3.0 - Watershed Sampling Summary', fontsize=17, color='white')
     title_text_object.set_path_effects([path_effects.Stroke(linewidth=3, foreground='black'), path_effects.Normal()])
     ax1_title_object = ax1.set_title('User Inputs', color='white')
     ax1_title_object.set_path_effects([path_effects.Stroke(linewidth=3, foreground='black'), path_effects.Normal()])
