@@ -78,16 +78,14 @@ Wetlands that periodically lack indicators of wetland hydrology:
     ..."
 """
 
-# Import Standard Libraries
+import glob
+import json
 import os
-import pickle
 import subprocess
-import sys
 import time
 import traceback
 from datetime import datetime
 
-# Import Third-Party Libraries
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -95,7 +93,6 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from webdriver_manager.chrome import ChromeDriverManager
 
-# Import Custom Libraries
 try:
     from . import JLog
 except Exception:
@@ -106,11 +103,21 @@ class WebWimpChecker:
     def __init__(self):
         self.log = JLog.PrintLog()
         self.driver = None
-        self.chrome_driver_path = ChromeDriverManager().install()
-        self._open_browser()
+        wimp_path = next(
+            glob.iglob(f"{os.getcwd()}/**/wimp_dict.json", recursive=True), None
+        )
+        if wimp_path is not None:
+            with open(wimp_path, "r") as wimp_file:
+                self.wimp_dict = json.load(wimp_file)
+        else:
+            print("Cached webwimp not found.")
+            self.wimp_dict = None
 
     def _open_browser(self):
         try:
+            self.chrome_driver_path = ChromeDriverManager().install()
+            self._open_browser()
+
             chrome_options = Options()
             chrome_options.add_argument("--disable-extensions")
             chrome_options.add_argument("--no-sandbox")
@@ -137,12 +144,31 @@ class WebWimpChecker:
         """
         # Create PrintLog
         log = JLog.PrintLog(Indent=2)
-        url = "http://cyclops.deos.udel.edu/wimp/public_html/index.html"
-        log.Wrap("Scraping Page ({})...".format(url))
 
         try:
-            # Open Page
-            #            log.Wrap('  Navigating to first page...')
+            lat = round(lat, 1)
+            lon = round(lon, 1)
+
+            if self.wimp_dict != None:
+                error_messages = ["LARGE WATER BODY", "PERMANENT SNOW COVER", "ERROR"]
+                coordinates_to_check = [
+                    (lat, lon),
+                    (lat + 0.1, lon),
+                    (lat - 0.1, lon),
+                    (lat, lon + 0.1),
+                    (lat, lon - 0.1),
+                ]
+
+                for lat_check, lon_check in coordinates_to_check:
+                    rows = self.wimp_dict.get(
+                        f"{lat_check:.1f},{lon_check:.1f}", "ERROR"
+                    )
+                    if rows not in error_messages:
+                        return rows
+
+            url = "http://cyclops.deos.udel.edu/wimp/public_html/index.html"
+            log.Wrap("Scraping Page ({})...".format(url))
+
             for x in range(4):
                 try:
                     if self.driver is None:
@@ -200,9 +226,6 @@ class WebWimpChecker:
                 if "large body of water." in elem.text:
                     waterbody_error = True
             if waterbody_error:
-                #                log.Wrap("  Received 'Point falls within large body of water' error")
-                #                log.Wrap("    Attempting to work around by:")
-                #                log.Wrap("      -Clicking the 'Revise Longitude and Latitude' button")
                 # Try to clear the error, which often goes away if you just click Revise lat/lon
                 for element in self.driver.find_elements(By.XPATH, "//input"):
                     if (
@@ -219,11 +242,6 @@ class WebWimpChecker:
                     if "large body of water." in elem.text:
                         waterbody_error = True
                 if waterbody_error:
-                    #               log.Wrap("  Received 'Point falls within large body of water' error")
-                    #               log.Wrap("    Attempting to work around by:")
-                    #               log.Wrap("      -Adding '0.01' to Latitude")
-                    #               log.Wrap("      -Clicking the 'Revise Longitude and Latitude' button")
-                    # Find Latitude input box, clear it, then type selected Latitude + .01
                     lat_element = self.driver.find_element("name", "Latitude")
                     lat_element.clear()
                     updated_lat = lat + 0.01
@@ -244,12 +262,6 @@ class WebWimpChecker:
                         if "large body of water." in elem.text:
                             waterbody_error = True
                     if waterbody_error:
-                        #                log.Wrap("  Received 'Point falls within large body of water' error")
-                        #                log.Wrap("    Attempting to work around by:")
-                        #                log.Wrap("      -Returning Latitude to original value")
-                        #                log.Wrap("      -Adding '0.01' to Longitude")
-                        #                log.Wrap("      -Clicking the 'Revise Longitude and Latitude' button")
-                        # Find Latitude input box, clear it, then type selected Latitude + .01
                         lat_element = self.driver.find_element("name", "Latitude")
                         lat_element.clear()
                         lat_element.send_keys("{}".format(lat))
@@ -266,7 +278,6 @@ class WebWimpChecker:
                             ):
                                 revise_element = element
                         revise_element.click()
-                        # Allow for page to load
                         time.sleep(0.1)
                         # Check to see if point on Large Body of Water error occurred
                         for elem in self.driver.find_elements(By.XPATH, "//span"):
@@ -536,8 +547,6 @@ class WimpScraper(object):
         self.log = JLog.PrintLog()
         self.rows = []
         self.wimp_checker_instance = None
-        self.wimp_dict = None
-        self.batch_dict = dict()
         self.wimp_checker_executions = 0
 
     def get_season(self, lat, lon, month=None):
@@ -570,7 +579,10 @@ class WimpScraper(object):
                 self.log.print_separator_line()
                 self.log.Write("")
                 return "ERROR"
-            self.rows = calculate_wet_dry_table(wimp_rows)
+            try:
+                self.rows = calculate_wet_dry_table(wimp_rows)
+            except:
+                self.rows = wimp_rows
             season = get_season_from_rows(self.rows, month)
             self.log.print_separator_line()
             self.log.Write("")
@@ -583,6 +595,6 @@ class WimpScraper(object):
 
 if __name__ == "__main__":
     WIMP_SCRAPER = WimpScraper()
-    WIMP_SCRAPER.get_season(lat=33.2098, lon=-87.5692, month=10)
-    WIMP_SCRAPER.get_season(lat=33.2098, lon=-87.6692, month=10)
+    # WIMP_SCRAPER.get_season(lat=33.2098, lon=-87.5692, month=10)
+    # WIMP_SCRAPER.get_season(lat=33.2098, lon=-87.6692, month=10)
     WIMP_SCRAPER.get_season(lat=30, lon=-90, month=10)
