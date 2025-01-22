@@ -21,8 +21,8 @@ dependencies:
   - ulmo=0.8.8
   - selenium=4.20.0
   - matplotlib
-  - pywin32
   - pyinstaller=6.9.0
+  - webdriver-manager
   - pip:
     - pyproj
     - geopandas

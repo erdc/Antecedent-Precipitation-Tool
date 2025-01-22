@@ -47,7 +47,6 @@ Graphical user interface for the Antecedent Precipitation Tool
 
 import ftplib
 import os
-import pickle
 import subprocess
 import sys
 
@@ -1621,9 +1620,6 @@ class AntGUI(object):
             if not len(input_list_list) > 1:
                 self.L.print_title("SINGLE POINT ANALYSIS")
                 run_list = input_list + [save_folder, forecast_enabled]
-
-                with open("temp.pickle", "wb") as picklefile:
-                    pickle.dump((run_list, ante_instance, self.gridded), picklefile)
 
                 self.L.Wrap("Running: " + str(run_list))
                 (

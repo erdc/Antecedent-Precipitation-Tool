@@ -115,9 +115,10 @@ except Exception:
         sys.path.append(ARC_FOLDER)
         UTILITIES_FOLDER = os.path.join(ARC_FOLDER, "utilities")
         sys.path.append(UTILITIES_FOLDER)
-    import JLog
     import netcdf_parse_all
     import web_wimp_scraper
+
+    import JLog
 
 
 # FUNCTION DEFINITIONS
@@ -668,9 +669,9 @@ class AnteProcess(object):
         multiprocessing.set_executable(executable)
         # Set number of Sub-processes based on CPU_Count
         #        num_minions = multiprocessing.cpu_count()
-        num_minions = (
-            4  # > 4 resulted in many failed FTP downloads that succeeded in-line later
-        )
+        num_minions = 4
+        # > 4 resulted in many failed FTP downloads that succeeded in-line later
+
         # Establish communication queues
         self.log.Wrap("Establishing Communication Queues...")
         tasks_queue = multiprocessing.Queue()
@@ -958,8 +959,6 @@ class AnteProcess(object):
                     lat=float(self.site_lat),
                     lon=float(self.site_long),
                     month=int(self.dates.observation_month),
-                    output_folder=self.folderPath,
-                    watershed_analysis=self.watershed_analysis,
                 )
                 del palmer_value, palmer_class, palmer_color
                 # Query all Elevations
@@ -972,24 +971,6 @@ class AnteProcess(object):
                 self.log.Wrap(traceback.format_exc())
         # Maintain processing pool until all jobs are complete and collect results
         self.finish_multiprocessing(tasks_queue, results_queue, minions, enqueue_count)
-
-        # Pickle All Stations for re-use the same day
-        # JLG commented this out on 2023-04-24 to fix Oregon bug
-        # if self.data_type == 'PRCP':
-        #     self.log.Wrap('Attempting to pickle Station Records for future use within 12 hours...')
-        #     pickle_folder = os.path.join(ROOT, 'cached')
-        #     pickle_path = os.path.join(pickle_folder, 'station_classes.pickle')
-        #     if os.path.exists(pickle_path) is True:
-        #         try:
-        #             os.remove(pickle_path)
-        #         except Exception:
-        #             pass
-        #     # Store Data (serialize)
-        #     try:
-        #         with open(pickle_path, 'wb') as handle:
-        #             pickle.dump(self.allStations, handle, protocol=pickle.HIGHEST_PROTOCOL)
-        #     except Exception:
-        #         pass
 
     def getBest(self, need_primary):
         lowestDiff = 10000
@@ -1957,8 +1938,6 @@ class AnteProcess(object):
                     lat=float(self.site_lat),
                     lon=float(self.site_long),
                     month=int(self.dates.observation_month),
-                    output_folder=self.folderPath,
-                    watershed_analysis=self.watershed_analysis,
                 )
                 if not wet_dry_season_result == "ERROR":
                     description_table_values.append(

@@ -86,8 +86,6 @@ if __name__ == "__main__":
     arc.get_all.ensure_wbd_folder()
     arc.get_all.ensure_us_shp_folder()
     arc.get_all.ensure_climdiv_folder()
-    arc.get_all.ensure_WIMP()
-
     # Run graphics
     ula_window()
     main()
