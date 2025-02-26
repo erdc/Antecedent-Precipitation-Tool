@@ -61,7 +61,7 @@ def ensure_version_file():
 
 
 def ensure_wbd_folder():
-    file_url = "https://github.com/erdc/Antecedent-Precipitation-Tool/releases/download/v3.0.0/WBD.zip"
+    file_url = "https://github.com/erdc/Antecedent-Precipitation-Tool/releases/download/2.9.9/WBD.zip"
     gis_folder = os.path.join(ROOT_FOLDER, "GIS")
     local_file_path = os.path.join(gis_folder, "WBD.zip")
     wbd_folder = os.path.join(gis_folder, "WBD")
@@ -92,7 +92,7 @@ def ensure_us_shp_folder():
         except Exception:
             pass
         try:
-            file_url = "https://github.com/erdc/Antecedent-Precipitation-Tool/releases/download/v3.0.0/us_shp.zip"
+            file_url = "https://github.com/erdc/Antecedent-Precipitation-Tool/releases/download/2.9.9/us_shp.zip"
             get_files.ensure_file_exists(
                 file_url=file_url,
                 local_file_path=local_file_path,
@@ -117,7 +117,7 @@ def ensure_climdiv_folder():
             os.remove(local_file_path)
         except Exception:
             pass
-        file_url = "https://github.com/erdc/Antecedent-Precipitation-Tool/releases/download/v3.0.0/climdiv.zip"
+        file_url = "https://github.com/erdc/Antecedent-Precipitation-Tool/releases/download/2.9.9/climdiv.zip"
         get_files.ensure_file_exists(
             file_url=file_url, local_file_path=local_file_path, extract_path=gis_folder
         )
