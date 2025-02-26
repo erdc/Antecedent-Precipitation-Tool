@@ -61,7 +61,7 @@ def ensure_version_file():
 
 
 def ensure_wbd_folder():
-    file_url = "https://github.com/jDeters-USACE/Antecedent-Precipitation-Tool/releases/download/v1.0/WBD.zip"
+    file_url = "https://github.com/erdc/Antecedent-Precipitation-Tool/releases/download/v3.0.0/WBD.zip"
     gis_folder = os.path.join(ROOT_FOLDER, "GIS")
     local_file_path = os.path.join(gis_folder, "WBD.zip")
     wbd_folder = os.path.join(gis_folder, "WBD")
@@ -92,7 +92,7 @@ def ensure_us_shp_folder():
         except Exception:
             pass
         try:
-            file_url = "https://github.com/erdc/Antecedent-Precipitation-Tool/releases/download/v1.0.21/us_shp.zip"
+            file_url = "https://github.com/erdc/Antecedent-Precipitation-Tool/releases/download/v3.0.0/us_shp.zip"
             get_files.ensure_file_exists(
                 file_url=file_url,
                 local_file_path=local_file_path,
@@ -117,138 +117,13 @@ def ensure_climdiv_folder():
             os.remove(local_file_path)
         except Exception:
             pass
-        file_url = "https://github.com/jDeters-USACE/Antecedent-Precipitation-Tool/releases/download/v1.0.3/climdiv.zip"
+        file_url = "https://github.com/erdc/Antecedent-Precipitation-Tool/releases/download/v3.0.0/climdiv.zip"
         get_files.ensure_file_exists(
             file_url=file_url, local_file_path=local_file_path, extract_path=gis_folder
         )
 
 
-def ensure_WIMP():
-    wimp_folder = os.path.join(ROOT_FOLDER, "cached")
-    wimp_path = os.path.join(wimp_folder, "wimp_dict.pickle")
-    wimp_path_exists = os.path.exists(wimp_path)
-    if not wimp_path_exists:
-        local_file_path = os.path.join(wimp_folder, "WebWimpcache.zip")
-        try:
-            os.remove(local_file_path)
-        except Exception:
-            pass
-        file_url = "https://github.com/erdc/Antecedent-Precipitation-Tool/raw/master/cached/WebWIMPcache.zip"
-        get_files.ensure_file_exists(
-            file_url=file_url, local_file_path=local_file_path, extract_path=wimp_folder
-        )
-
-
-def ensure_libiomp5md():
-    local_file_path = os.path.join(ROOT_FOLDER, "libiomp5md.dll")
-    url = "https://github.com/jDeters-USACE/Antecedent-Precipitation-Tool/releases/download/v1.0/libiomp5md.dll"
-    get_files.ensure_file_exists(file_url=url, local_file_path=local_file_path)
-
-
-def ensure_mkl_avx2():
-    local_file_path = os.path.join(ROOT_FOLDER, "mkl_avx2.dll")
-    url = "https://github.com/jDeters-USACE/Antecedent-Precipitation-Tool/releases/download/v1.0/mkl_avx2.dll"
-    get_files.ensure_file_exists(file_url=url, local_file_path=local_file_path)
-
-
-def ensure_mkl_core():
-    local_file_path = os.path.join(ROOT_FOLDER, "mkl_core.dll")
-    url = "https://github.com/jDeters-USACE/Antecedent-Precipitation-Tool/releases/download/v1.0/mkl_core.dll"
-    get_files.ensure_file_exists(file_url=url, local_file_path=local_file_path)
-
-
-def ensure_mkl_intel_thread():
-    local_file_path = os.path.join(ROOT_FOLDER, "mkl_intel_thread.dll")
-    url = "https://github.com/jDeters-USACE/Antecedent-Precipitation-Tool/releases/download/v1.0/mkl_intel_thread.dll"
-    get_files.ensure_file_exists(file_url=url, local_file_path=local_file_path)
-
-
-def ensure_mkl_p4m3():
-    local_file_path = os.path.join(ROOT_FOLDER, "mkl_p4m3.dll")
-    url = "https://github.com/jDeters-USACE/Antecedent-Precipitation-Tool/releases/download/v1.0/mkl_p4m3.dll"
-    get_files.ensure_file_exists(file_url=url, local_file_path=local_file_path)
-
-
-def ensure_mkl_vml_p4():
-    local_file_path = os.path.join(ROOT_FOLDER, "mkl_vml_p4.dll")
-    url = "https://github.com/jDeters-USACE/Antecedent-Precipitation-Tool/releases/download/v1.0/mkl_vml_p4.dll"
-    get_files.ensure_file_exists(file_url=url, local_file_path=local_file_path)
-
-
-def ensure_mkl_avx():
-    local_file_path = os.path.join(ROOT_FOLDER, "mkl_avx.dll")
-    url = "https://github.com/jDeters-USACE/Antecedent-Precipitation-Tool/releases/download/v1.0/mkl_avx.dll"
-    get_files.ensure_file_exists(file_url=url, local_file_path=local_file_path)
-
-
-def ensure_mkl_p4():
-    local_file_path = os.path.join(ROOT_FOLDER, "mkl_p4.dll")
-    url = "https://github.com/jDeters-USACE/Antecedent-Precipitation-Tool/releases/download/v1.0/mkl_p4.dll"
-    get_files.ensure_file_exists(file_url=url, local_file_path=local_file_path)
-
-
-def ensure_binaries():
-    ensure_libiomp5md()
-    # ensure_mkl_avx2()
-    # ensure_mkl_core()
-    # ensure_mkl_intel_thread()
-    # ensure_mkl_p4m3()
-    # ensure_mkl_vml_p4()
-    # ensure_mkl_avx()
-    # ensure_mkl_p4()
-
-
-def ensure_images():
-    """Ensure the existence of all items from the image folder"""
-    images_folder = os.path.join(ROOT_FOLDER, "images")
-    local_file_path = os.path.join(images_folder, "Graph.ico")
-    get_files.ensure_file_exists(
-        file_url="https://github.com/erdc/Antecedent-Precipitation-Tool/raw/master/images/Graph.ico",
-        local_file_path=local_file_path,
-    )
-    local_file_path = os.path.join(images_folder, "Minus.gif")
-    get_files.ensure_file_exists(
-        file_url="https://github.com/erdc/Antecedent-Precipitation-Tool/raw/master/images/Minus.gif",
-        local_file_path=local_file_path,
-    )
-    local_file_path = os.path.join(images_folder, "Plus.gif")
-    get_files.ensure_file_exists(
-        file_url="https://github.com/erdc/Antecedent-Precipitation-Tool/raw/master/images/Plus.gif",
-        local_file_path=local_file_path,
-    )
-    local_file_path = os.path.join(images_folder, "Question.gif")
-    get_files.ensure_file_exists(
-        file_url="https://github.com/erdc/Antecedent-Precipitation-Tool/raw/master/images/Question.gif",
-        local_file_path=local_file_path,
-    )
-    # local_file_path = os.path.join(images_folder, 'RD_1_0.png')
-    # get_files.ensure_file_exists(file_url='https://github.com/erdc/Antecedent-Precipitation-Tool/raw/master/images/RD_1_0.png',
-    #                              local_file_path=local_file_path)
-    local_file_path = os.path.join(images_folder, "Traverse_40%_503.gif")
-    get_files.ensure_file_exists(
-        file_url="https://github.com/erdc/Antecedent-Precipitation-Tool/raw/master/images/Traverse_40%25_503.gif",
-        local_file_path=local_file_path,
-    )
-    local_file_path = os.path.join(images_folder, "Traverse_80%_1920.png")
-    get_files.ensure_file_exists(
-        file_url="https://github.com/erdc/Antecedent-Precipitation-Tool/raw/master/images/Traverse_80%25_1920.png",
-        local_file_path=local_file_path,
-    )
-    local_file_path = os.path.join(images_folder, "folder.gif")
-    get_files.ensure_file_exists(
-        file_url="https://github.com/erdc/Antecedent-Precipitation-Tool/raw/master/images/folder.gif",
-        local_file_path=local_file_path,
-    )
-
-
-def main():
-    ensure_main_exe()
-    ensure_images()
-
-
 if __name__ == "__main__":
-    ensure_images()
     ensure_wbd_folder()
     ensure_us_shp_folder()
     ensure_climdiv_folder()
-    ensure_WIMP()
