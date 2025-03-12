@@ -28,99 +28,70 @@
 #  copyrighted portions.  Copyrighted portions of the software are not in the
 #  public domain.
 
-
-######################################
-##  ------------------------------- ##
-##           get_all.py             ##
-##  ------------------------------- ##
-##     Written by: Jason Deters     ##
-##     Edited by: Joseph Gutenson   ##
-##  ------------------------------- ##
-##    Last Edited on: 2023-04-26    ##
-##  ------------------------------- ##
-######################################
-
 import os
-from pathlib import Path
+import zipfile
 
 try:
-    from . import get_files
+    from .utils import find_file_or_dir
 except Exception:
-    import get_files
+    from utils import find_file_or_dir
 
 MODULE_FOLDER = os.path.dirname(os.path.realpath(__file__))
 ROOT_FOLDER = os.path.split(MODULE_FOLDER)[0]
 
 
-def ensure_version_file():
-    local_file_path = os.path.join(ROOT_FOLDER, "version")
-    file_url = (
-        "https://github.com/erdc/Antecedent-Precipitation-Tool/raw/master/version"
-    )
-    get_files.ensure_file_exists(file_url=file_url, local_file_path=local_file_path)
+def extract_local_archive(zip_path, extract_path):
+    """
+    Extract contents of a ZIP archive to a specified directory.
+    """
+    # Create extraction directory if it doesn't exist
+    os.makedirs(extract_path, exist_ok=True)
+
+    # Extract ZIP contents
+    with zipfile.ZipFile(zip_path, "r") as zip_ref:
+        zip_ref.extractall(extract_path)
 
 
 def ensure_wbd_folder():
-    file_url = "https://github.com/erdc/Antecedent-Precipitation-Tool/releases/download/2.9.9/WBD.zip"
+    # setup paths
     gis_folder = os.path.join(ROOT_FOLDER, "GIS")
-    local_file_path = os.path.join(gis_folder, "WBD.zip")
     wbd_folder = os.path.join(gis_folder, "WBD")
-    wbd_Exists = os.path.exists(wbd_folder)
-    version_folder = os.path.join(ROOT_FOLDER, "v")
-    local_version_file = os.path.join(version_folder, "wbd")
-    web_version_url = (
-        "https://github.com/erdc/Antecedent-Precipitation-Tool/raw/master/v/wbd"
-    )
-    get_files.get_only_newer_version(
-        file_url=file_url,
-        local_file_path=local_file_path,
-        local_check_file=wbd_folder,
-        version_url=web_version_url,
-        version_local_path=local_version_file,
-        extract_path=wbd_folder,
-    )
+    if os.path.exists(wbd_folder):
+        return
+
+    # find local zip, raises if not found
+    local_file_path = find_file_or_dir(ROOT_FOLDER, "WBD.zip", num_searches=1)
+
+    # create folder
+    extract_local_archive(zip_path=local_file_path, extract_path=wbd_folder)
 
 
 def ensure_us_shp_folder():
+    # setup paths
     gis_folder = os.path.join(ROOT_FOLDER, "GIS")
     us_shp_folder = os.path.join(gis_folder, "us_shp")
-    us_shp_folder_exists = os.path.exists(us_shp_folder)
-    if not us_shp_folder_exists:
-        local_file_path = os.path.join(gis_folder, "us_shp.zip")
-        try:
-            os.remove(local_file_path)
-        except Exception:
-            pass
-        try:
-            file_url = "https://github.com/erdc/Antecedent-Precipitation-Tool/releases/download/2.9.9/us_shp.zip"
-            get_files.ensure_file_exists(
-                file_url=file_url,
-                local_file_path=local_file_path,
-                extract_path=us_shp_folder,
-            )
-        except:
-            file_url = "https://www2.census.gov/geo/tiger/GENZ2021/shp/cb_2021_us_nation_5m.zip"
-            get_files.ensure_file_exists(
-                file_url=file_url,
-                local_file_path=local_file_path,
-                extract_path=us_shp_folder,
-            )
+    if os.path.exists(us_shp_folder):
+        return
+
+    # find local zip, raises if not found
+    local_file_path = find_file_or_dir(ROOT_FOLDER, "us_shp.zip", num_searches=1)
+
+    # create folder
+    extract_local_archive(zip_path=local_file_path, extract_path=us_shp_folder)
 
 
 def ensure_climdiv_folder():
     gis_folder = os.path.join(ROOT_FOLDER, "GIS")
     climdiv_folder = os.path.join(gis_folder, "climdiv")
-    climdiv_folder_exists = os.path.exists(climdiv_folder)
-    if not climdiv_folder_exists:
-        local_file_path = os.path.join(gis_folder, "climdiv.zip")
-        try:
-            os.remove(local_file_path)
-        except Exception:
-            pass
-        file_url = "https://github.com/erdc/Antecedent-Precipitation-Tool/releases/download/2.9.9/climdiv.zip"
-        get_files.ensure_file_exists(
-            file_url=file_url, local_file_path=local_file_path, extract_path=gis_folder
-        )
+
+    if os.path.exists(climdiv_folder):
+        return
+
+    # find local zip, raises if not found
+    local_file_path = find_file_or_dir(ROOT_FOLDER, "climdiv.zip", num_searches=1)
+
+    # create folder
+    extract_local_archive(zip_path=local_file_path, extract_path=climdiv_folder)
 
 
 if __name__ == "__main__":

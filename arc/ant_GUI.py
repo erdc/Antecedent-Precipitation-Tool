@@ -107,18 +107,7 @@ except Exception:
     import JLog
 """
 
-# Version stuff
-get_all.ensure_version_file()
-VERSION_FILES_FOLDER = os.path.join(ROOT, "v")
-VERSION_FILE_PATH = os.path.join(VERSION_FILES_FOLDER, "main_ex")
-with open(VERSION_FILE_PATH, "r") as VERSION_FILE:
-    for line in VERSION_FILE:
-        VERSION_STRING = line.replace("\n", "")
-        VERSION_LIST = VERSION_STRING.split(".")
-        VERSION_FOR_PATHS = "v{}_{}_{}".format(
-            VERSION_LIST[0], VERSION_LIST[1], VERSION_LIST[2]
-        )
-        break
+VERSION_FOR_PATHS = f"v3.0.0"
 
 
 def click_help_button():
