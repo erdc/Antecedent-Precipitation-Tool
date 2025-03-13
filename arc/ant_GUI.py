@@ -107,7 +107,7 @@ except Exception:
     import JLog
 """
 
-VERSION_FOR_PATHS = f"v3.0.0"
+VERSION_FOR_PATHS = f"v3_0_0"
 
 
 def click_help_button():
