@@ -68,7 +68,7 @@ from dask.diagnostics import ProgressBar
 from geopy.distance import great_circle
 from simplekml import Kml
 from tqdm import tqdm
-
+from shapely.geometry import Point
 # Internal Imports
 try:
     from arc.utils import find_file_or_dir, ini_config, setup_logger
@@ -237,8 +237,29 @@ def calc_percentile(flow, df, date):
     return round(percentile_rank, 3)
 
 
-# ### USGS FUNCTIONS ###
+def get_special_region(lat, lon):
+    # Find and read the shapefile
+    usa_path = find_file_or_dir(os.getcwd(), "tl_2023_us_state.shp")
+    usa_gdf = gpd.read_file(usa_path)
 
+    # Perform spatial join
+    point = Point(lon, lat)
+    joined = gpd.sjoin(gpd.GeoDataFrame(geometry=[point], crs=usa_gdf.crs), usa_gdf, how='left', predicate='intersects')
+    
+    # Check if a state was found
+    if not joined.empty:
+        value = joined["STUSPS"].iloc[0]
+        special_regions = ["AK", "PR", "VI", "GU", "MP", "AS", "HI"]
+
+        if pd.isna(value):
+            return -1
+        elif value in special_regions:
+            return value
+        return "CONUS"
+    else:
+        return -1  # No state found
+
+# ### USGS FUNCTIONS ###
 
 @lru_cache(maxsize=CACHE_SIZE)
 def get_usgs_flow(gage_id, date):
@@ -610,14 +631,18 @@ def get_nwm_flow(comid_list, date, data_dir="data"):
         if ret == 0:
             break
         elif ret != -1:
-            logger.warn(f"download attempt returned code: {ret}")
+            logger.warning(f"download attempt returned code: {ret}")
         download_attempt += 1
 
     if download_attempt >= 3:
-        logger.warn("nwm flow data download attempts exceeded 3")
+        logger.warning("nwm flow data download attempts exceeded 3")
 
     date_str = date.strftime("%Y%m%d")
-    nc_filepath = find_file_or_dir(os.getcwd(), f"nwm_data_{date_str}.nc")
+    try:
+        nc_filepath = find_file_or_dir(os.getcwd(), f"nwm_data_{date_str}.nc")
+    except FileNotFoundError:
+        print("NWM analysis does not have enough data to run")
+        return -1
 
     ds = netCDF4.Dataset(nc_filepath)
     streamflow = ds.variables["streamflow"]
@@ -645,7 +670,7 @@ def get_nwm_flow(comid_list, date, data_dir="data"):
                 unit = "m3/s"
             else:
                 unit = ""
-                logger.warn(
+                logger.warning(
                     "Conversion factor detected that is neither meters to feet or 1.0."
                 )
 
@@ -679,7 +704,7 @@ def local_norm_nwm(lat, lon, date, save_path=None):
         return -1
 
     # get flow on observation date at local points
-    flow_points = get_nwm_flow(local_comids, date)
+    flow_points = get_nwm_flow(local_comids, date, data_dir=data_dir)
     if flow_points == -1:
         return -1
     comid_list = [int(point["comid"]) for point in flow_points.values()]
@@ -832,14 +857,28 @@ def local_norm(lat, lon, date, save_path=None):
 
 def test():
     # lat, lon = 30, -90
-    lat, lon = 29.331518, -94.800046
+    # lat, lon = 29.331518, -94.800046
+    points = [(18.217, -66.289), 
+              (61.1925, -149.8200),
+              (21.2904, -157.7299),
+              (13.4091, 144.7808),
+              (18.4014, -65.8110),
+              (18.3291, -64.8973),
+              (30, -90),
+              (29.331518, -94.800046),
+              (55, -105)
+              ]
 
     date = "2022-02-22"
     try:
         data_dir = find_file_or_dir(os.getcwd(), "data")
     except:
         data_dir = os.path.join(os.getcwd(), "data")
-    local_norm(lat, lon, date, data_dir)
+
+    for point in points:
+        lat, lon = point
+        # local_norm(lat, lon, date, data_dir)
+        print(get_special_region(lat=lat, lon=lon))
 
 
 def generate_conus_grid(interval=10):
