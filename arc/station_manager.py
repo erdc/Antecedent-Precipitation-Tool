@@ -51,10 +51,11 @@ import os
 import sys
 import time
 
+import numpy
+import ulmo
+
 # Import third-party modules
 from geopy.distance import great_circle
-import ulmo
-import numpy
 
 # Find module path
 MODULE_PATH = os.path.dirname(os.path.realpath(__file__))
@@ -66,16 +67,17 @@ try:
     from .utilities import JLog
 except Exception:
     # Reverse compatibility step - Add utilities folder to path directly
-    PYTHON_SCRIPTS_FOLDER = os.path.join(ROOT, 'Python Scripts')
+    PYTHON_SCRIPTS_FOLDER = os.path.join(ROOT, "Python Scripts")
     TEST = os.path.exists(PYTHON_SCRIPTS_FOLDER)
     if TEST:
-        UTILITIES_FOLDER = os.path.join(PYTHON_SCRIPTS_FOLDER, 'utilities')
+        UTILITIES_FOLDER = os.path.join(PYTHON_SCRIPTS_FOLDER, "utilities")
         sys.path.append(UTILITIES_FOLDER)
     else:
-        ARC_FOLDER = os.path.join(ROOT, 'arc')
-        UTILITIES_FOLDER = os.path.join(ARC_FOLDER, 'utilities')
+        ARC_FOLDER = os.path.join(ROOT, "arc")
+        UTILITIES_FOLDER = os.path.join(ARC_FOLDER, "utilities")
         sys.path.append(UTILITIES_FOLDER)
     import JLog
+
 
 # CLASS DEFINITIONS
 class Constructor(object):
@@ -85,9 +87,23 @@ class Constructor(object):
     between the station location and a given point, and slices the data
     by selected type and date range.
     """
-    def __init__(self, dataType, index, name, location, locationTuple, elevation,
-                 distance, elevDiff, weightedDiff, StartDate, EndDate, ObservationDate,
-                 CurrentRollingStartDate):
+
+    def __init__(
+        self,
+        dataType,
+        index,
+        name,
+        location,
+        locationTuple,
+        elevation,
+        distance,
+        elevDiff,
+        weightedDiff,
+        StartDate,
+        EndDate,
+        ObservationDate,
+        CurrentRollingStartDate,
+    ):
         self.L = JLog.PrintLog()
         self.dataType = dataType
         self.index = index
@@ -104,10 +120,21 @@ class Constructor(object):
         self.CurrentRollingStartDate = CurrentRollingStartDate
 
     def __call__(self):
-        aclass = StationManager(self.dataType, self.index, self.name, self.location, self.locationTuple,
-                      self.elevation, self.distance, self.elevDiff, self.weightedDiff,
-                      self.StartDate, self.EndDate, self.ObservationDate,
-                      self.CurrentRollingStartDate)
+        aclass = StationManager(
+            self.dataType,
+            self.index,
+            self.name,
+            self.location,
+            self.locationTuple,
+            self.elevation,
+            self.distance,
+            self.elevDiff,
+            self.weightedDiff,
+            self.StartDate,
+            self.EndDate,
+            self.ObservationDate,
+            self.CurrentRollingStartDate,
+        )
         return aclass
 
 
@@ -118,9 +145,23 @@ class StationManager(object):
     between the station location and a given point, and slices the data
     by selected type and date range.
     """
-    def __init__(self, dataType, index, name, location, locationTuple, elevation,
-                 distance, elevDiff, weightedDiff, StartDate, EndDate, ObservationDate,
-                 CurrentRollingStartDate):
+
+    def __init__(
+        self,
+        dataType,
+        index,
+        name,
+        location,
+        locationTuple,
+        elevation,
+        distance,
+        elevDiff,
+        weightedDiff,
+        StartDate,
+        EndDate,
+        ObservationDate,
+        CurrentRollingStartDate,
+    ):
         self.L = JLog.PrintLog()
         self.dataType = dataType
         self.index = index
@@ -140,6 +181,7 @@ class StationManager(object):
         self.actual_rows = 0
         self.current_actual_rows = 0
         self.run()
+
     # End of __init__
 
     def run(self):
@@ -147,16 +189,16 @@ class StationManager(object):
         tries = 5
         while tries > 0:
             try:
-                self.data = ulmo.ncdc.ghcn_daily.get_data(self.index,
-                                                          elements=self.dataType,
-                                                          update=True,
-                                                          as_dataframe=True)
+                self.data = ulmo.ncdc.ghcn_daily.get_data(
+                    self.index, elements=self.dataType, update=True, as_dataframe=True
+                )
                 tries = 0
                 self.trimData()
             except Exception:
-                #self.L.Write(traceback.format_exc())
+                # self.L.Write(traceback.format_exc())
                 tries -= 1
                 time.sleep(2)
+
     # End of Run
 
     def trimData(self):
@@ -170,27 +212,37 @@ class StationManager(object):
             try:
                 df_copy = self.data[self.dataType].copy()
             except KeyError:
-                self.L.Write('The station "{}" lacked PRCP data (Likely a server-side glitch)'.format(self.name))
+                self.L.Write(
+                    'The station "{}" lacked PRCP data (Likely a server-side glitch)'.format(
+                        self.name
+                    )
+                )
                 keys = self.data.keys()
-                self.L.Write('  For debugging: The following data types were found: {}'.format(keys))
+                self.L.Write(
+                    "  For debugging: The following data types were found: {}".format(
+                        keys
+                    )
+                )
                 num_rows = 0
             try:
                 # Slicing relevant rows
-                self.Values = df_copy.loc[self.StartDate:self.EndDate, 'value']
+                self.Values = df_copy.loc[self.StartDate : self.EndDate, "value"]
                 del df_copy
-                self.Values.replace('', numpy.nan, inplace=True)
+                self.Values.replace("", numpy.nan, inplace=True)
                 self.Values.dropna(inplace=True)
                 # Index Values and count rows
                 self.Values.index = self.Values.index.to_timestamp()
                 num_rows = len(self.Values.index)
                 # Filter out any station with a year with no precipitation
-                if self.dataType == 'PRCP':
+                if self.dataType == "PRCP":
                     days = 365
                     daySum = 0
-                    for row in self.Values.iteritems():
+                    for row in self.Values.items():
                         if days < 1:
                             if daySum < 1:
-                                self.L.Wrap("Whole year of Zeros!  ---Excluding This Dataset---")
+                                self.L.Wrap(
+                                    "Whole year of Zeros!  ---Excluding This Dataset---"
+                                )
                                 num_rows = 0
                                 break
                             days = 365
@@ -205,8 +257,10 @@ class StationManager(object):
                 self.actual_rows = num_rows - num_null
                 # Slicing just current year rows to perform separate tests
                 df_copy = self.Values.copy()
-                current_values = df_copy.loc[self.CurrentRollingStartDate:self.ObservationDate]
-                current_values.replace('', numpy.nan, inplace=True)
+                current_values = df_copy.loc[
+                    self.CurrentRollingStartDate : self.ObservationDate
+                ]
+                current_values.replace("", numpy.nan, inplace=True)
                 current_values.dropna(inplace=True)
                 current_num_rows = len(current_values.index)
                 test = current_num_rows > 1
@@ -215,15 +269,18 @@ class StationManager(object):
                     self.current_actual_rows = current_num_rows - current_num_null
                 del df_copy
         except Exception as exc_str:
-#            self.L.Write(traceback.format_exc())
+            #            self.L.Write(traceback.format_exc())
             self.L.Write(exc_str)
+
     # End of trimData
 
-    def updateValues(self, site_loc, site_elev, StartDate, EndDate, CurrentRollingStartDate):
+    def updateValues(
+        self, site_loc, site_elev, StartDate, EndDate, CurrentRollingStartDate
+    ):
         """Updates station values based on new location and date range"""
         self.distance = round(great_circle(site_loc, self.locationTuple).miles, 3)
         self.elevDiff = round(abs(site_elev - self.elevation), 3)
-        self.weightedDiff = round(self.distance*((self.elevDiff/1000)+0.45), 3)
+        self.weightedDiff = round(self.distance * ((self.elevDiff / 1000) + 0.45), 3)
         self.StartDate = StartDate
         self.EndDate = EndDate
         self.CurrentRollingStartDate = CurrentRollingStartDate
@@ -231,36 +288,50 @@ class StationManager(object):
 
     def print_stats(self):
         """Prints stats..."""
-        print('actual_rows = {}'.format(self.actual_rows))
-        print('current_actual_rows = {}'.format(self.current_actual_rows))
-        print('weightedDiff = {}'.format(self.weightedDiff))
+        print("actual_rows = {}".format(self.actual_rows))
+        print("current_actual_rows = {}".format(self.current_actual_rows))
+        print("weightedDiff = {}".format(self.weightedDiff))
 
     def __str__(self):
-        return '{}'.format(self.name)
+        return "{}".format(self.name)
 
 
 ########################################################################
 
-if __name__ == '__main__':
-#    print('Creating constructor...')
-#    x = Constructor('PRCP', 'USC00044484', 'KELSEY 1 N', '38.8089, -120.8208', (38.8089, -120.8208), 436.023636, 19.968887027645902, 1879.0777612485354, 46.50909069297444, '1987-09-01', '2018-10-15', '2018-07-01')
-#    print('Constructing instance...')
-#    f = x()
-#    print('Printing stats...')
-#    f.print_stats()
-#    for x in range(10):
-#        print('Updating Values...')
-#        f.updateValues(site_loc=(38.789972, -120.797499),
-#                       site_elev=436.023636,
-#                       StartDate='1987-09-01',
-#                       EndDate='2018-10-15',
-#                       CurrentRollingStartDate='2018-07-01')
-#        print('Printing stats...')
-#        f.print_stats()
+if __name__ == "__main__":
+    #    print('Creating constructor...')
+    #    x = Constructor('PRCP', 'USC00044484', 'KELSEY 1 N', '38.8089, -120.8208', (38.8089, -120.8208), 436.023636, 19.968887027645902, 1879.0777612485354, 46.50909069297444, '1987-09-01', '2018-10-15', '2018-07-01')
+    #    print('Constructing instance...')
+    #    f = x()
+    #    print('Printing stats...')
+    #    f.print_stats()
+    #    for x in range(10):
+    #        print('Updating Values...')
+    #        f.updateValues(site_loc=(38.789972, -120.797499),
+    #                       site_elev=436.023636,
+    #                       StartDate='1987-09-01',
+    #                       EndDate='2018-10-15',
+    #                       CurrentRollingStartDate='2018-07-01')
+    #        print('Printing stats...')
+    #        f.print_stats()
 
-    print('Creating constructor...')
-    x = Constructor('PRCP', 'US1CAED0023', 'EL DORADO HILLS 0.9NNW', '38.598, -121.0869', (38.5, -121.5), 436.023636, 19.968887027645902, 1879.0777612485354, 46.50909069297444, '1991-09-01', '2023-04-22', '2023-03-25', '2022-12-26')
-    print('Constructing instance...')
+    print("Creating constructor...")
+    x = Constructor(
+        "PRCP",
+        "US1CAED0023",
+        "EL DORADO HILLS 0.9NNW",
+        "38.598, -121.0869",
+        (38.5, -121.5),
+        436.023636,
+        19.968887027645902,
+        1879.0777612485354,
+        46.50909069297444,
+        "1991-09-01",
+        "2023-04-22",
+        "2023-03-25",
+        "2022-12-26",
+    )
+    print("Constructing instance...")
     f = x()
-    print('Printing stats...')
+    print("Printing stats...")
     f.print_stats()
