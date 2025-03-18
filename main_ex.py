@@ -40,6 +40,7 @@
 
 # Import Standard Libraries
 import multiprocessing
+import traceback
 
 multiprocessing.freeze_support()
 
@@ -82,10 +83,22 @@ def main():
 
 
 if __name__ == "__main__":
-    arc.get_all.ensure_wbd_folder()
-    arc.get_all.ensure_us_shp_folder()
-    arc.get_all.ensure_climdiv_folder()
-    arc.get_all.ensure_WIMP()
-    arc.shortcut.create_shortcut_frozen()
-    ula_window()
-    main()
+    try:
+        # Setup
+        arc.get_all.ensure_wbd_folder()
+        arc.get_all.ensure_us_shp_folder()
+        arc.get_all.ensure_climdiv_folder()
+        arc.get_all.ensure_WIMP()
+        arc.shortcut.create_shortcut_frozen()
+
+        # Run graphics
+        ula_window()
+        main()
+    except Exception as e:
+        error_message = f"Error: {str(e)}\nDetailed Error:\n{traceback.format_exc()}"
+        print(
+            "The APT experienced a fatal error, please restart or contact 'APT-Report-Issue@usace.army.mil'"
+        )
+        print(error_message)
+        print("Press any key to close...")
+        input()
