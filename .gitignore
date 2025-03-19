@@ -1,0 +1,16 @@
+/dist/
+/build/
+/cached/
+/GIS/
+/Logs/
+/Outputs/
+/__pycache__/
+*.pyc
+*.dll
+*.pickle
+*.log
+*.nc
+*.kml
+ula_accepted
+*historic*.csv
+*STATS*.csv
