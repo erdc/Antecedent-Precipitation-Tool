@@ -60,7 +60,7 @@ except:
 
 def main(lat, lon):
     # Load the shapefile
-    usa_path = find_file_or_dir(os.getcwd(), "tl_2023_us_state.shp")
+    usa_path = find_file_or_dir(os.getcwd(), "cb_2021_us_nation_5m.shp")
     usa_gdf = gpd.read_file(usa_path)
 
     # Create a GeoSeries from the latitude and longitude
