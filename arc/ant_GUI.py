@@ -46,9 +46,11 @@ Graphical user interface for the Antecedent Precipitation Tool
 """
 
 import ftplib
+from ftplib import FTP_TLS
 import os
 import subprocess
 import sys
+import ssl
 
 # Import Standard Libraries
 import tkinter
