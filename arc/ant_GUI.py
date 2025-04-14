@@ -810,118 +810,144 @@ class AntGUI(object):
 
     # End askfile method
 
-    def test_noaa_server(self):
-        # Test whether https://www1.ncdc.noaa.gov/pub/data/ghcn/daily is accessible
-        if self.ncdc_working is False:
-            try:
-                self.L.print_title("NOAA Server Status Check")
-                self.L.Wrap(
-                    "Server Base URL = https://www1.ncdc.noaa.gov/pub/data/ghcn/daily"
-                )
-                self.L.Wrap("Testing if NOAA's Server is currently accessible...")
-                test_url = "https://www1.ncdc.noaa.gov/pub/data/ghcn/daily/readme.txt"
-                for i in range(5):
-                    if i < 1:
-                        self.L.Wrap("  Attempting to download: {}".format(test_url))
-                    else:
-                        self.L.Wrap(
-                            "  Attempt {} of 5 - Downloading: {}".format(
-                                (i + 1), test_url
-                            )
-                        )
-                    test_connection = requests.get(test_url, timeout=15)
-                    if i > 0:
-                        wait = i * 2
-                        self.L.Wrap(
-                            "    -Giving the server {} extra seconds to respond".format(
-                                wait
-                            )
-                        )
-                        time.sleep(i)
-                    if test_connection.status_code > 299:
-                        self.L.Wrap("    -Download failed!")
-                        self.ncdc_working = False
-                    else:
-                        self.ncdc_working = True
-                        del test_connection
-                        break
-            except Exception:
-                self.ncdc_working = False
-        # Try FTP
-        if self.ncdc_working is False:
+
+def test_noaa_server(self):
+    # Test whether https://www1.ncdc.noaa.gov/pub/data/ghcn/daily is accessible
+    if self.ncdc_working is False:
+        try:
+            self.L.print_title("NOAA Server Status Check")
             self.L.Wrap(
-                "NOAA'S HTTP SERVER IS UNAVAILABLE - ATTEMPTING TO USE FTP SERVER AS A WORKAROUND..."
+                "Server Base URL = https://www1.ncdc.noaa.gov/pub/data/ghcn/daily"
             )
-            self.L.Wrap("Server Base URL = ftp://ftp.ncdc.noaa.gov/pub/data/ghcn/daily")
             self.L.Wrap("Testing if NOAA's Server is currently accessible...")
-            test_url = "ftp://ftp.ncdc.noaa.gov/pub/data/ghcn/daily/readme.txt"
+            test_url = "https://www1.ncdc.noaa.gov/pub/data/ghcn/daily/readme.txt"
             for i in range(5):
-                test_url = "ftp://ftp.ncdc.noaa.gov/pub/data/ghcn/daily/readme.txt"
                 if i < 1:
                     self.L.Wrap("  Attempting to download: {}".format(test_url))
                 else:
                     self.L.Wrap(
                         "  Attempt {} of 5 - Downloading: {}".format((i + 1), test_url)
                     )
-                    module_path = os.path.dirname(os.path.realpath(__file__))
-                    root_folder = os.path.split(module_path)[0]
-                    local_file_name = "readme.txt"
-                    local_file_path = os.path.join(root_folder, local_file_name)
-                    # Delete the old file if it exists so this test works properly
-                    try:
-                        os.remove(local_file_path)
-                    except Exception:
-                        pass
-                    test_url = "ftp://ftp.ncdc.noaa.gov/pub/data/ghcn/daily"
-                    strip_ftp = test_url[6:]
-                    first_slash = strip_ftp.find("/")
-                    ftp_address = strip_ftp[:first_slash]
-                    ftp_folder = strip_ftp[(first_slash + 1) :]
-                    try:
-                        self.L.Wrap(
-                            "   -Creating FTP Instance for {}...".format(ftp_address)
+                test_connection = requests.get(test_url, timeout=15)
+                if i > 0:
+                    wait = i * 2
+                    self.L.Wrap(
+                        "    -Giving the server {} extra seconds to respond".format(
+                            wait
                         )
-                        ftp = ftplib.FTP(ftp_address)
-                        self.L.Wrap("   -Logging in to FTP Instance...")
-                        ftp.login()
-                        self.L.Wrap(
-                            "   -Navigating to selected folder ({})...".format(
-                                ftp_folder
-                            )
-                        )
-                        ftp.cwd(ftp_folder)
-                        self.L.Wrap("   -Downloading via File Transfer Protocol...")
-                        ftp.retrbinary(
-                            "RETR {}".format(local_file_name),
-                            open(local_file_path, "wb").write,
-                        )
-                        ftp.quit()
-                        del ftp
-                        # Check DLY file size and switch to http if < 2 KB
-                        self.L.Wrap("   -Testing file...")
-                        dly_size = os.path.getsize(local_file_path)
-                        if (
-                            dly_size < 300
-                        ):  # 241 is what the 403 Forbidden error has been producing during Gov't Shutdown
-                            self.L.Wrap("     -403 Forbidden error received.")
-                            self.ncdc_working = False
-                            try:
-                                os.remove(local_file_path)
-                            except Exception:
-                                pass
-                        else:
-                            self.ncdc_working = True
-                            try:
-                                os.remove(local_file_path)
-                            except Exception:
-                                pass
-                            break
-                    except Exception:
+                    )
+                    time.sleep(i)
+                if test_connection.status_code > 299:
+                    self.L.Wrap("    -Download failed!")
+                    self.ncdc_working = False
+                else:
+                    self.ncdc_working = True
+                    del test_connection
+                    break
+        except Exception:
+            self.ncdc_working = False
+
+    # Try FTP with explicit TLS
+    if self.ncdc_working is False:
+        self.L.Wrap(
+            "NOAA'S HTTP SERVER IS UNAVAILABLE - ATTEMPTING TO USE FTP SERVER AS A WORKAROUND..."
+        )
+        self.L.Wrap("Server Base URL = ftp://ftp.ncdc.noaa.gov/pub/data/ghcn/daily")
+        self.L.Wrap("Testing if NOAA's Server is currently accessible...")
+        test_url = "ftp://ftp.ncdc.noaa.gov/pub/data/ghcn/daily/readme.txt"
+        for i in range(5):
+            test_url = "ftp://ftp.ncdc.noaa.gov/pub/data/ghcn/daily/readme.txt"
+            if i < 1:
+                self.L.Wrap("  Attempting to download: {}".format(test_url))
+            else:
+                self.L.Wrap(
+                    "  Attempt {} of 5 - Downloading: {}".format((i + 1), test_url)
+                )
+                module_path = os.path.dirname(os.path.realpath(__file__))
+                root_folder = os.path.split(module_path)[0]
+                local_file_name = "readme.txt"
+                local_file_path = os.path.join(root_folder, local_file_name)
+                # Delete the old file if it exists so this test works properly
+                try:
+                    os.remove(local_file_path)
+                except Exception:
+                    pass
+                test_url = "ftp://ftp.ncdc.noaa.gov/pub/data/ghcn/daily"
+                strip_ftp = test_url[6:]
+                first_slash = strip_ftp.find("/")
+                ftp_address = strip_ftp[:first_slash]
+                ftp_folder = strip_ftp[(first_slash + 1) :]
+                try:
+                    # Create secure TLS context
+                    self.L.Wrap(
+                        "   -Creating secure FTP Instance for {}...".format(ftp_address)
+                    )
+                    context = ssl.create_default_context()
+                    context.options |= ssl.OP_NO_SSLv2
+                    context.options |= ssl.OP_NO_SSLv3
+                    context.options |= ssl.OP_NO_TLSv1
+                    context.options |= ssl.OP_NO_TLSv1_1
+                    context.verify_mode = ssl.CERT_REQUIRED
+
+                    # Create FTP_TLS instance with custom context
+                    ftp = FTP_TLS(context=context)
+
+                    # Connect with explicit TLS
+                    self.L.Wrap("   -Connecting to FTP server with TLS...")
+                    ftp.connect(ftp_address, timeout=15)
+
+                    # Switch to secure data connection
+                    self.L.Wrap("   -Switching to secure data connection...")
+                    ftp.auth()
+                    ftp.prot_p()
+
+                    # Login and navigate
+                    self.L.Wrap("   -Logging in to FTP Instance...")
+                    ftp.login()
+                    self.L.Wrap(
+                        "   -Navigating to selected folder ({})...".format(ftp_folder)
+                    )
+                    ftp.cwd(ftp_folder)
+
+                    # Download file
+                    self.L.Wrap("   -Downloading via secure File Transfer Protocol...")
+                    ftp.retrbinary(
+                        "RETR {}".format(local_file_name),
+                        open(local_file_path, "wb").write,
+                    )
+
+                    # Cleanup
+                    ftp.quit()
+                    del ftp
+
+                    # Check file size
+                    self.L.Wrap("   -Testing file...")
+                    dly_size = os.path.getsize(local_file_path)
+                    if dly_size < 300:
+                        self.L.Wrap("     -403 Forbidden error received.")
+                        self.ncdc_working = False
                         try:
-                            ftp.quit()
-                            del ftp
+                            os.remove(local_file_path)
                         except Exception:
                             pass
+                    else:
+                        self.ncdc_working = True
+                        try:
+                            os.remove(local_file_path)
+                        except Exception:
+                            pass
+                        break
+                except Exception as e:
+                    try:
+                        ftp.quit()
+                        del ftp
+                    except Exception:
+                        pass
+                    self.L.Wrap(
+                        "   -Error occurred during FTP transfer: {}".format(str(e))
+                    )
+                    self.ncdc_working = False
+
         if self.ncdc_working is False:
             self.L.Wrap("                   ###################")
             self.L.Wrap("  NOAA's Server is ###---OFFLINE---###")
@@ -932,8 +958,6 @@ class AntGUI(object):
             self.L.Wrap(
                 'NOTE: If you continue to receive this error, please click the "Report Issue" button to submit an error report.'
             )
-            self.L.print_separator_line()
-            self.L.Wrap("")
             self.L.Wrap(
                 'Click "Calculate" to retry, or click the "?" in the top right and then "Report Issue" to send an error log to the developer.'
             )
