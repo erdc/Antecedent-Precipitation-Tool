@@ -42,16 +42,12 @@
 ##  ------------------------------- ##
 ######################################
 
-import requests
+import logging
 import time
 
-# Internal Imports
-try:
-    from arc.utils import setup_logger
-except:
-    from utils import setup_logger
+import requests
 
-logger = setup_logger()
+logger = logging.getLogger(__name__)
 
 RETRY_LIMIT = 3
 

@@ -43,6 +43,7 @@
 import csv
 import glob
 import io
+import logging
 import multiprocessing
 import os
 import time
@@ -66,16 +67,17 @@ import requests
 import xarray as xr
 from dask.diagnostics import ProgressBar
 from geopy.distance import great_circle
+from shapely.geometry import Point
 from simplekml import Kml
 from tqdm import tqdm
-from shapely.geometry import Point
+
 # Internal Imports
 try:
-    from arc.utils import find_file_or_dir, ini_config, setup_logger
+    from arc.utils import find_file_or_dir, ini_config
 except:
-    from utils import find_file_or_dir, ini_config, setup_logger
+    from utils import find_file_or_dir, ini_config
 
-logger = setup_logger()
+logger = logging.getLogger(__name__)
 
 default = {
     "local_norm": {
@@ -244,8 +246,13 @@ def get_special_region(lat, lon):
 
     # Perform spatial join
     point = Point(lon, lat)
-    joined = gpd.sjoin(gpd.GeoDataFrame(geometry=[point], crs=usa_gdf.crs), usa_gdf, how='left', predicate='intersects')
-    
+    joined = gpd.sjoin(
+        gpd.GeoDataFrame(geometry=[point], crs=usa_gdf.crs),
+        usa_gdf,
+        how="left",
+        predicate="intersects",
+    )
+
     # Check if a state was found
     if not joined.empty:
         value = joined["STUSPS"].iloc[0]
@@ -259,7 +266,9 @@ def get_special_region(lat, lon):
     else:
         return -1  # No state found
 
+
 # ### USGS FUNCTIONS ###
+
 
 @lru_cache(maxsize=CACHE_SIZE)
 def get_usgs_flow(gage_id, date):
@@ -858,16 +867,17 @@ def local_norm(lat, lon, date, save_path=None):
 def test():
     # lat, lon = 30, -90
     # lat, lon = 29.331518, -94.800046
-    points = [(18.217, -66.289), 
-              (61.1925, -149.8200),
-              (21.2904, -157.7299),
-              (13.4091, 144.7808),
-              (18.4014, -65.8110),
-              (18.3291, -64.8973),
-              (30, -90),
-              (29.331518, -94.800046),
-              (55, -105)
-              ]
+    points = [
+        (18.217, -66.289),
+        (61.1925, -149.8200),
+        (21.2904, -157.7299),
+        (13.4091, 144.7808),
+        (18.4014, -65.8110),
+        (18.3291, -64.8973),
+        (30, -90),
+        (29.331518, -94.800046),
+        (55, -105),
+    ]
 
     date = "2022-02-22"
     try:

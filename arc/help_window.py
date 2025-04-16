@@ -39,6 +39,7 @@
 ##  ------------------------------- ##
 ######################################
 
+import logging
 import os
 import subprocess
 import sys
@@ -71,11 +72,11 @@ except Exception:
 
 # Internal Imports
 try:
-    from arc.utils import find_file_or_dir, setup_logger
+    from arc.utils import find_file_or_dir
 except:
-    from utils import find_file_or_dir, setup_logger
+    from utils import find_file_or_dir
 
-logger = setup_logger()
+logger = logging.getLogger(__name__)
 
 try:
     help_path = find_file_or_dir(os.getcwd(), "help.txt")

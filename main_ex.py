@@ -34,9 +34,20 @@
 ##  ------------------------------- ##
 ##     Written by: Jason Deters     ##
 ##  ------------------------------- ##
-##    Last Edited on: 2020-06-22    ##
+##    Last Edited on: 2025-04-02    ##
 ##  ------------------------------- ##
 ######################################
+
+import logging
+
+# Special setup logger
+if __name__ == "__main__":
+    from arc import utils
+
+    utils.setup_logger()
+
+logger = logging.getLogger(__name__)
+logger.debug(f"program starting")
 
 # Import Standard Libraries
 import multiprocessing
@@ -93,9 +104,9 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         error_message = f"Error: {str(e)}\nDetailed Error:\n{traceback.format_exc()}"
-        print(
+        logger.error(
             "The APT experienced a fatal error, please restart or contact 'APT-Report-Issue@usace.army.mil'"
         )
-        print(error_message)
-        print("Press any key to close...")
+        logger.error(error_message)
+        logger.error("Press any key to close...")
         input()

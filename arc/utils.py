@@ -34,8 +34,9 @@
 ##  ------------------------------- ##
 ##     Written by: Chris French     ##
 ##      Edited by: Gene Kloss       ##
+##      Edited by: Chris French     ##
 ##  ------------------------------- ##
-##    Last Edited on:  2024-05-02   ##
+##    Last Edited on:  2025-04-02   ##
 ##  ------------------------------- ##
 ######################################
 
@@ -43,8 +44,10 @@ import configparser
 import glob
 import logging
 import os
-import platform
+import pkgutil
 from logging.handlers import TimedRotatingFileHandler
+
+logger = logging.getLogger(__name__)
 
 
 def find_file_or_dir(search_dir, pattern, num_searches=2):
@@ -93,59 +96,110 @@ def ini_config(default, data_dir="data"):
     return config
 
 
+def filter_strings(strings, forbidden):
+    """
+    Filter out strings that contain any of the forbidden substrings.
+
+    Args:
+        strings (list): List of strings to filter
+        forbidden (list): List of forbidden substrings
+
+    Returns:
+        list: Filtered list of strings that don't contain any forbidden substrings
+    """
+    # Handle None values and empty lists
+    if strings is None or forbidden is None:
+        return []
+    if not isinstance(strings, list) or not isinstance(forbidden, list):
+        return []
+
+    # Use list comprehension to filter out strings containing forbidden substrings
+    return [s for s in strings if not any(f in s for f in forbidden)]
+
+
 def setup_logger(log_path: os.PathLike = None):
     """
-    Set up a logger with both console and file handlers.
-    The logger's propagation is set to False, meaning that once a log message has been handled by this logger,
-    it won't be passed to higher-level (ancestor) loggers.
+    Set up root logger with both console and file handlers and optionally blacklist modules.
+
+    Args:
+        log_path: Path to save log files
+        blacklist_modules: List of module names to exclude from logging
+
+    Returns:
+        Module-specific logger instance
     """
-    logger = logging.getLogger("__name__")
-    logger.setLevel(logging.DEBUG)
-    logger.propagate = False
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)
+    root_logger.propagate = False
+
+    # Remove existing handlers
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    # Handle log path configuration
     if log_path is None:
         try:
-            log_path = find_file_or_dir(os.getcwd(), "logs")
+            log_path = find_file_or_dir(os.getcwd(), "Logs")
         except:
-            log_path = os.path.join(os.getcwd(), "logs")
-
-    os.makedirs(log_path, exist_ok=True)
-    log_path = os.path.join(log_path, "log.log")
-
+            log_path = os.path.join(os.getcwd(), "Logs")
+        os.makedirs(log_path, exist_ok=True)
+        log_path = os.path.join(log_path, "log.log")
     if not os.path.exists(log_path):
         with open(log_path, "w") as outfile:
             outfile.write("")
 
-    # if handlers already exist something probably went wrong
-    if len(logger.handlers) == 0:
-        # create handlers
-        r_handler = TimedRotatingFileHandler(
-            log_path, when="midnight", interval=1, backupCount=3
-        )
-        c_handler = logging.StreamHandler()
+    # Create handlers
+    r_handler = TimedRotatingFileHandler(
+        log_path, when="midnight", interval=1, backupCount=3
+    )
+    c_handler = logging.StreamHandler()
 
-        # set level of handlers
-        r_handler.setLevel(logging.DEBUG)
-        c_handler.setLevel(logging.INFO)
+    # Set level of handlers
+    r_handler.setLevel(logging.DEBUG)
+    c_handler.setLevel(logging.INFO)
 
-        # create formatters and add to handlers
-        verbose_format = logging.Formatter(
-            "%(asctime)s - %(filename)s - %(levelname)s - %(message)s",
-            datefmt="%H:%M:%S",
-        )
-        short_format = logging.Formatter("%(message)s")
-        r_handler.setFormatter(verbose_format)
-        c_handler.setFormatter(short_format)
+    # Create formatters and add to handlers
+    verbose_format = logging.Formatter(
+        "%(asctime)s[%(filename)s]:%(levelname)s- %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    short_format = logging.Formatter("%(message)s")
+    r_handler.setFormatter(verbose_format)
+    c_handler.setFormatter(short_format)
 
-        # add handlers
-        logger.addHandler(r_handler)
-        logger.addHandler(c_handler)
-    else:
-        handler_str = ""
-        for handler in logger.handlers:
-            handler_str += f"\tHandler Type: {type(handler).__name__}\n"
-            handler_str += f"\tHandler Level: {handler.level}\n"
-        logger.debug(
-            f"Tried to create logger handlers when some already exist:\n{handler_str}"
-        )
+    # Add handlers to root logger
+    root_logger.addHandler(r_handler)
+    root_logger.addHandler(c_handler)
 
-    return logger
+    # Disable all non local loggers (set them to warn)
+    all_loggers = get_all_loggers()
+    local_modules = get_local_modules()
+    local_modules += ["tqdm", "__main__", "apt", "arc"]
+    loggers_to_disable = filter_strings(all_loggers, local_modules)
+    blacklist_loggers(loggers_to_disable)
+
+    logger.debug(f"Logger initialized, disabled loggers: {loggers_to_disable}")
+
+
+def get_local_modules():
+    current_dir = os.path.dirname(__file__)
+    return [module.name for module in pkgutil.iter_modules([current_dir])]
+
+
+def get_all_loggers():
+    root_logger = logging.getLogger()
+    return list(root_logger.manager.loggerDict.keys())
+
+
+def blacklist_loggers(loggers_to_blacklist):
+    """
+    Sets the logging level to WARNING for specified loggers.
+    """
+    for logger_name in loggers_to_blacklist:
+        if (
+            ("tqdm" not in logger_name)
+            and ("__main__" not in logger_name)
+            and ("arc" not in logger_name)
+        ):
+            logger = logging.getLogger(logger_name)
+            logger.setLevel(logging.WARNING)
