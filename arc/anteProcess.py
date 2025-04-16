@@ -125,7 +125,7 @@ except Exception:
 
 
 def get_json_multiple_ways(url):
-    """Tries to pull JSON data from a URL using urllib3 first and then requests"""
+    """Tries to pull JSON data from a URL using requests first and then urllib3"""
     log = JLog.PrintLog()
     if "https://epqs.nationalmap.gov/v1" in url:
         base_url = "epqs.nationalmap.gov"
@@ -134,8 +134,10 @@ def get_json_multiple_ways(url):
         "The requested service is temporarily unavailable.  Please try later."
     )
     unavailable_error_count = 0
-    # Try urllib3
-    # Try Requests module
+
+    # Try Requests module first
+    # then try urllib3
+
     try:
         log.print_status_message("Querying {}...".format(base_url))
         content = requests.get(url, timeout=15)
