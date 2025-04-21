@@ -95,7 +95,8 @@ try:
     )
     from .getElev import batch, get_elevation
     from .utilities import JLog, web_wimp_scraper
-except Exception:
+except Exception as e:
+    print(f"Import error {e}")
     import date_calcs
     import get_forecast
     import process_manager
@@ -116,7 +117,7 @@ except Exception:
         UTILITIES_FOLDER = os.path.join(ARC_FOLDER, "utilities")
         sys.path.append(UTILITIES_FOLDER)
     import netcdf_parse_all
-    import web_wimp_scraper
+    from utilities import web_wimp_scraper
 
     import JLog
 
@@ -399,46 +400,6 @@ class AnteProcess(object):
         self.gridded = (
             gridded  # True/False this analysis will be using gridded rainfall
         )
-
-        """
-        # JLG commented this out on 2023-04-24 to fix Oregon bug
-        # if not self.allStations:
-        #     # Check for previously Cached Station Data from same day
-        #     pickle_folder = os.path.join(ROOT, 'cached')
-        #     # Ensure pickle_folder exists
-        #     try:
-        #         os.makedirs(pickle_folder)
-        #     except Exception:
-        #         pass
-        #     pickle_path = os.path.join(pickle_folder, 'station_classes.pickle')
-        #     if self.data_type == 'PRCP' and self.gridded is False:
-        #         self.log.Wrap('Checking for previously cached NCDC GHCN Weather Station Records...')
-        #         stations_pickle_exists = os.path.exists(pickle_path)
-        #         if stations_pickle_exists:
-        #             self.log.Wrap('  Cached station data found. Testing...')
-        #             expiration_hours = 12
-        #             stale = file_older_than(file_path=pickle_path,
-        #                                     time_unit='hours',
-        #                                     time_value=expiration_hours)
-        #             if stale:
-        #                 self.log.Wrap('    Cached station data older than {} hours. Deleting...'.format(expiration_hours))
-        #                 os.remove(pickle_path)
-        #             else:
-        #                 pickle_size = os.path.getsize(pickle_path)
-        #                 if pickle_size < 15682622:
-        #                     self.log.Wrap('    Cached station data corrupt. Deleting...')
-        #                     os.remove(pickle_path)
-        #         stations_pickle_exists = os.path.exists(pickle_path)
-        #         if stations_pickle_exists:
-        #             self.log.Wrap('Unserializing cached station data..."')
-        #             try:
-        #                 with open(pickle_path, 'rb') as handle:
-        #                     self.allStations = pickle.load(handle)
-        #             except:
-        #                 self.log.Wrap('Unserialization failed. Deleting...')
-        #                 self.allStations = []
-        #                 os.remove(pickle_path)
-        """
 
         # Calculate Dates
         self.dates = date_calcs.DateCalc(year, month, day, self.gridded)
@@ -787,22 +748,6 @@ class AnteProcess(object):
                     elevation = row_elev_meters * 3.28084
                     elevDiff = abs(self.obs_elevation - elevation)
                     weightedDiff = distance * ((elevDiff / 1000) + 0.45)
-                    # JLG commented out on 2023-04-24 to test the Oregon bug
-                    # commenting this out fixed the bug but slows things down
-
-                    # for item in self.allStations:
-                    #     if item.name == name:
-                    #         station_number_for_print += 1
-                    #         self.log.Wrap('Station {} - {} - Data previously acquired'.format(station_number_for_print,
-                    #                                                                           name))
-                    #         already = item
-                    #         already.updateValues(self.site_loc,
-                    #                              self.obs_elevation,
-                    #                              self.dates.normal_period_data_start_date,
-                    #                              self.dates.actual_data_end_date,
-                    #                              self.dates.antecedent_period_start_date)
-                    #         self.stations.append(already)
-                    #         # self.recentStations.append(already)
                     if already is False:
                         station_number_for_print += 1
                         self.log.Wrap(
