@@ -9,6 +9,8 @@ import sys
 # Construct the path to the distributed package from conda env path
 conda_env_path = sys.prefix
 distributed_path = os.path.join(conda_env_path, 'Lib', 'site-packages', 'distributed')
+sys.setrecursionlimit(sys.getrecursionlimit() * 5)
+
 
 block_cipher = None
 

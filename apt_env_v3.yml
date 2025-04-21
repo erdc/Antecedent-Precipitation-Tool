@@ -4,10 +4,11 @@ channels:
   - defaults
 dependencies:
   - python=3.10
+  - urllib3=2.4.0
   - numpy=1.23.3
   - pip=24.0
   - gdal=3.8.5
-  - netCDF4=1.6.5
+  - netCDF4=1.7.2
   - s3fs>=2024
   - dask=2024.8.2
   - fsspec>=2024
