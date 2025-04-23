@@ -28,22 +28,7 @@
 #  copyrighted portions.  Copyrighted portions of the software are not in the
 #  public domain.
 
-######################################
-##  ------------------------------- ##
-##         anteProcess.py           ##
-##  ------------------------------- ##
-##      Writen by: Jason Deters     ##
-##      Edited by: Joseph Gutenson  ##
-##      Edited by: Chase Hamilton   ##
-##      Edited by: Chris French     ##
-##  ------------------------------- ##
-##    Last Edited on: 2024-05-08    ##
-##  ------------------------------- ##
-######################################
-
 import multiprocessing
-
-# Import Standard Libraries
 import os
 import pickle
 import stat
@@ -53,8 +38,6 @@ import traceback
 import warnings
 from datetime import datetime, timedelta
 
-# from operator import itemgetter # No longer used
-
 # Get root folder
 MODULE_PATH = os.path.dirname(os.path.realpath(__file__))
 ROOT = os.path.dirname(MODULE_PATH)
@@ -62,11 +45,8 @@ ROOT = os.path.dirname(MODULE_PATH)
 # Ulmo throws annoying warnings...
 warnings.filterwarnings("ignore")
 
-# Import 3rd Party Libraries
-
 import json
 
-# from matplotlib.legend_handler import HandlerLine2D # No longer used
 import matplotlib.dates as dates
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
@@ -79,11 +59,6 @@ import urllib3
 from geopy.distance import great_circle
 from matplotlib import rcParams
 
-# Stop annoying urllib3 errors for EPQS tests
-# import logging
-# logging.getLogger("urllib3").setLevel(logging.ERROR)
-
-# Import Custom Modules
 try:
     from . import (
         date_calcs,
@@ -286,12 +261,6 @@ def value_list_to_water_year_table(dates, values):
             newrow.append(values[n])
         n += 1
     allDays = numpy.array(list_of_arrays)
-    #    numpy.set_printoptions(precision=2)
-    #    numpy.set_printoptions(suppress=True)
-    #    self.log.Wrap(allDays)
-    #    self.log.Wrap(allDays.shape)
-    #    # Save Numpy Array as CSV
-    #    allDays.tofile("C:/Temp/allDays.csv", ',','%f')
     return allDays
 
 
@@ -440,12 +409,6 @@ class AnteProcess(object):
                             self.log.Wrap(
                                 "Continuing Watershed Analysis - Keeping recent stations list."
                             )
-                            # try:
-                            #     dict_key = "{},{}".format(self.site_lat, self.site_long)
-                            #     self.obs_elevation = (
-                            #         self.all_sampling_coordinate_elevations[dict_key]
-                            #     )
-                            # except:
                             self.obs_elevation = round(
                                 get_elevation(self.site_lat, self.site_long),
                                 3,
@@ -587,17 +550,6 @@ class AnteProcess(object):
             if self.stations == []:
                 self.getStations()
             else:
-                # JLG commented out on 2023-04-24 to test the Oregon bug
-                # commenting this out fixed the bug but slows things down
-                # for station in self.recentStations:
-                #     if station.data is None:
-                #         station.run()
-                #     station.updateValues(self.site_loc,
-                #                          self.obs_elevation,
-                #                          self.dates.normal_period_data_start_date,
-                #                          self.dates.actual_data_end_date,
-                #                          self.dates.antecedent_period_start_date)
-                #     self.stations.append(station)
                 if self.watershed_analysis:
                     # Sort stations by weighted difference of current sampling point (Recalculated immediately above)
                     sorted_stations = []
@@ -643,12 +595,6 @@ class AnteProcess(object):
         # Start minions
         ### MANDATORY CODE TO DEAL WITH GLITCH ###
         sys.argv = [""]
-        ### MANDATORY CODE TO DEAL WITH GLITCH ###
-        # Glitch states the following:
-        # File "C;\Python27\ArcGIS10.3\Lib\multiprocessing\forking.py",
-        #  line 399, in get_preparation_data
-        #  sys_argv=sys.argv,
-        # AttributeError: 'module' object has no attribute 'argv'
         num = 0
         for minion in minions:
             num += 1
@@ -1364,9 +1310,6 @@ class AnteProcess(object):
                 # #            self.log.Wrap('Converting PRCP values to milimeters...')
                 if self.finalDF is not None:
                     self.finalDF = self.finalDF / 10.0
-                # self.log.Wrap('self.finalDF conversion complete.')
-            #            self.log.print_separator_line()
-            #            self.log.Wrap('')
             # Converting from millimeters to inches
             units = "in"
             units_long = "Inches"
@@ -1471,30 +1414,6 @@ class AnteProcess(object):
             vals.append("Maximum count of weathers stations within 30 miles")
             vals.append(int(round(station_count_data.max(), 0)))
             station_table_values.append(vals)
-            # BUILD STATIONS TABLE
-            # x = 1
-            # row_labels3.append(row_options[0])
-            # vals = []
-            # vals.append('NOAA Gridded PRCP Alpha')
-            # vals.append('N/A')
-            # vals.append('N/A')
-            # vals.append('N/A')
-            # vals.append('N/A')
-            # vals.append('N/A')
-            # vals.append(self.finalDF.count())
-            # vals.append(currentValues.count())
-            # table_vals3.append(vals)
-        ##            # SAVE finalDF TO CSV IN OUTPUT DIRECTORY
-        ##            if self.saveFolder is not None:
-        ##                try:
-        ##                    outputName = '{}\\({}, {}) Trimmed AlphaGrid PRCP.csv'.format(self.stationFolderPath, self.cdf_instance.closest_lat, self.cdf_instance.closest_lon)
-        ##                    if os.path.isfile(outputName) is True:
-        ##                        os.remove(outputName)
-        ##                        time.sleep(1)
-        ##                    self.L.Wrap('Saving Trimmed AlphaGrid PRCP data to CSV in output folder...')
-        ##                    self.finalDF.to_csv(outputName)
-        ##                except Exception as F:
-        ##                    self.L.Wrap(F)
 
         # Calculate rolling 30 day sum for the DataFrame
         self.log.Wrap("Calculating 30-day rolling totals...")
@@ -1920,12 +1839,6 @@ class AnteProcess(object):
             ax2 = plt.subplot2grid((9, 10), (6, 3), colspan=7, rowspan=2)
             ax3 = plt.subplot2grid((9, 10), (6, 0), colspan=3, rowspan=2)
             ax4 = plt.subplot2grid((9, 10), (8, 3), colspan=7, rowspan=1)
-            #    if num_stations_used > 10:
-            #        ax1 = plt.subplot2grid((9, 10), (0, 0), colspan=10, rowspan=5)
-            #        ax2 = plt.subplot2grid((9, 10), (5, 3), colspan=7, rowspan=2)
-            #        ax3 = plt.subplot2grid((9, 10), (5, 0), colspan=3, rowspan=2)
-            #        ax4 = plt.subplot2grid((9, 10), (7, 3), colspan=7, rowspan=1)
-            # Add Logo
             try:
                 images_folder = os.path.join(ROOT, "images")
                 logo_file = os.path.join(images_folder, "RD_3_0.png")
@@ -2039,9 +1952,6 @@ class AnteProcess(object):
                     "Antecedent Precipitation vs Normal Range based on NOAA's nClimGrid-Daily Precipitation Data",
                     fontsize=20,
                 )
-            #            ax1.set_title('NOAA - National Climatic Data Center - Daily Global'
-            #                          ' Historical Climatology Network - Rainfall Data',
-            #                          fontsize=20)
 
             if first_point_y_rolling_total:
                 first_point_label = first_point_x_date_string
@@ -2055,7 +1965,6 @@ class AnteProcess(object):
                     xytext=first_point_xytext,
                     textcoords="offset points",
                     size=13,
-                    # bbox=dict(boxstyle="round", fc="0.8"),
                     arrowprops=dict(
                         arrowstyle="simple",
                         fc="0.4",
@@ -2076,7 +1985,6 @@ class AnteProcess(object):
                     xytext=second_point_xytext,
                     textcoords="offset points",
                     size=13,
-                    # bbox=dict(boxstyle="round", fc="0.8"),
                     arrowprops=dict(
                         arrowstyle="simple",
                         fc="0.4",
@@ -2097,7 +2005,6 @@ class AnteProcess(object):
                     xytext=third_point_xytext,
                     textcoords="offset points",
                     size=13,
-                    # bbox=dict(boxstyle="round", fc="0.8"),
                     arrowprops=dict(
                         arrowstyle="simple",
                         fc="0.4",
@@ -2247,7 +2154,6 @@ class AnteProcess(object):
                     xytext=first_point_xytext,
                     textcoords="offset points",
                     size=15,
-                    # bbox=dict(boxstyle="round", fc="0.8"),
                     arrowprops=dict(
                         arrowstyle="simple",
                         fc="0.4",
@@ -2339,37 +2245,6 @@ class AnteProcess(object):
 if __name__ == "__main__":
     SAVE_FOLDER = os.path.join(ROOT, "Outputs")
     INSTANCE = AnteProcess()
-    # Input_List reference
-    #        self.data_type = inputList[0]
-    #        self.site_lat = inputList[1]
-    #        self.site_long = inputList[2]
-    #        year = inputList[3]
-    #        month = inputList[4]
-    #        day = inputList[5]
-    #        self.image_name = inputList[6]
-    #        self.image_source = inputList[7]
-    #        self.SAVE_FOLDER = inputList[8]
-    # INPUT_LIST = ['PRCP',
-    #               '38.5',
-    #               '-121.5',
-    #               2018,
-    #               10,
-    #               15,
-    #               None,
-    #               None,
-    #               SAVE_FOLDER,
-    #               False]
-    # INPUT_LIST = ['PRCP',
-    #               '62.235095',
-    #               '-159.057434',
-    #               2018,
-    #               10,
-    #               15,
-    #               None,
-    #               None,
-    #               SAVE_FOLDER,
-    #               False]
-    # INPUT_LIST = [["PRCP", "33.2098", "-87.5692", 2021, 10, 15, None, None, SAVE_FOLDER, False]]
     save_path = os.path.join(os.getcwd(), "experimental")
     INPUT_LIST = [["PRCP", "30", "-90", 2025, 1, 1, None, None, save_path, False]]
     for i in INPUT_LIST:
