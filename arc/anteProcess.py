@@ -87,7 +87,6 @@ from matplotlib import rcParams
 try:
     from . import (
         date_calcs,
-        get_forecast,
         netcdf_parse_all,
         process_manager,
         query_climdiv,
@@ -96,9 +95,7 @@ try:
     from .getElev import batch, get_elevation
     from .utilities import JLog, web_wimp_scraper
 except Exception as e:
-    print(f"Import error {e}")
     import date_calcs
-    import get_forecast
     import process_manager
     import query_climdiv
     import station_manager
@@ -116,10 +113,9 @@ except Exception as e:
         sys.path.append(ARC_FOLDER)
         UTILITIES_FOLDER = os.path.join(ARC_FOLDER, "utilities")
         sys.path.append(UTILITIES_FOLDER)
+    import JLog
     import netcdf_parse_all
     from utilities import web_wimp_scraper
-
-    import JLog
 
 
 # FUNCTION DEFINITIONS
@@ -394,7 +390,6 @@ class AnteProcess(object):
         self.image_name = inputList[6]
         self.image_source = inputList[7]
         self.save_folder = inputList[8]
-        self.forecast_setting = inputList[9]
         self.watershed_analysis = watershed_analysis
         self.all_sampling_coordinates = all_sampling_coordinates
         self.gridded = (
@@ -892,14 +887,12 @@ class AnteProcess(object):
             # MAKING EARLY REQUESTS BELOW TO USE THIS DOWNTIME
             try:
                 # Query PDSI
-                palmer_value, palmer_class, palmer_color, self.pdsidv_file = (
-                    query_climdiv.get_pdsidv(
-                        lat=float(self.site_lat),
-                        lon=float(self.site_long),
-                        year=self.dates.observation_year,
-                        month=self.dates.observation_month,
-                        pdsidv_file=self.pdsidv_file,
-                    )
+                _, _, _, self.pdsidv_file = query_climdiv.get_pdsidv(
+                    lat=float(self.site_lat),
+                    lon=float(self.site_long),
+                    year=self.dates.observation_year,
+                    month=self.dates.observation_month,
+                    pdsidv_file=self.pdsidv_file,
                 )
                 # Querying WebWIMP to collect Wet / Dry season info...'
                 wet_dry_season_result = self.wimp_scraper.get_season(
@@ -907,13 +900,6 @@ class AnteProcess(object):
                     lon=float(self.site_long),
                     month=int(self.dates.observation_month),
                 )
-                del palmer_value, palmer_class, palmer_color
-                # Query all Elevations
-                # if self.watershed_analysis is True:
-                #     if self.all_sampling_coordinate_elevations is None:
-                #         self.all_sampling_coordinate_elevations = batch(
-                #             self.all_sampling_coordinates
-                #         )
             except Exception:
                 self.log.Wrap(traceback.format_exc())
         # Maintain processing pool until all jobs are complete and collect results
@@ -1843,20 +1829,6 @@ class AnteProcess(object):
             description_table_values.append(["Source", tableSource])
             description_table_colors.append([light_grey, white])
 
-        # GET FORECAST DATA (If enabled)
-        if self.forecast_setting is True:
-            # Get Forecast if current water year is still in progress
-            if self.data_type == "PRCP":
-                if len(rolling30day) < 358:
-                    self.log.Wrap(
-                        "Requesting 7-Day Forecast Data from https://api.darksky.net..."
-                    )
-                    try:
-                        days, mm = get_forecast.main(self.site_lat, self.site_long)
-                    except Exception:
-                        self.log.Wrap(traceback.format_exc())
-                    self.log.Wrap("")
-
         # Get Palmer Drought Seveity Index
         if self.data_type == "PRCP":
             try:
@@ -1912,7 +1884,6 @@ class AnteProcess(object):
                 self.dates.graph_start_date,
                 self.finalDF,
                 self.dates.graph_end_date,
-                self.forecast_setting,
                 normal_low_series,
                 normal_high_series,
                 self.yMax,
@@ -2006,20 +1977,6 @@ class AnteProcess(object):
             drawstyle="steps-post",
             label="Daily Total",
         )
-
-        # PLOT FORECAST DATA (If enabled)
-        if self.forecast_setting is True:
-            try:
-                ax1.plot(
-                    days,
-                    mm,
-                    color="red",
-                    linewidth=1.2,
-                    drawstyle="steps-post",
-                    label="Daily Total Forecast",
-                )
-            except:
-                pass
 
         # Plot Rolling 30-day total
         if self.data_type != "SNWD":
@@ -2392,7 +2349,6 @@ if __name__ == "__main__":
     #        self.image_name = inputList[6]
     #        self.image_source = inputList[7]
     #        self.SAVE_FOLDER = inputList[8]
-    #        self.forecast_setting = inputList[9]
     # INPUT_LIST = ['PRCP',
     #               '38.5',
     #               '-121.5',
@@ -2415,9 +2371,7 @@ if __name__ == "__main__":
     #               False]
     # INPUT_LIST = [["PRCP", "33.2098", "-87.5692", 2021, 10, 15, None, None, SAVE_FOLDER, False]]
     save_path = os.path.join(os.getcwd(), "experimental")
-    INPUT_LIST = [
-        ["PRCP", "40.28257", "-104.856019", 2024, 2, 23, None, None, save_path, False]
-    ]
+    INPUT_LIST = [["PRCP", "30", "-90", 2025, 1, 1, None, None, save_path, False]]
     for i in INPUT_LIST:
         INSTANCE.setInputs(
             i, watershed_analysis=False, all_sampling_coordinates=None, gridded=False

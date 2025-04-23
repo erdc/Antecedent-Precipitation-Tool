@@ -34,29 +34,25 @@
 ##  ------------------------------- ##
 ##     Written by: Jason Deters     ##
 ##  ------------------------------- ##
-##    Last Edited on: 2025-04-02    ##
+##    Last Edited on: 2025-04-23    ##
 ##  ------------------------------- ##
 ######################################
 
 import logging
+import multiprocessing
+import traceback
+
+import arc
+
+multiprocessing.freeze_support()
 
 # Special setup logger
 if __name__ == "__main__":
-    from arc import utils
-
-    utils.setup_logger()
+    arc.utils.setup_logger()
 
 logger = logging.getLogger(__name__)
 logger.debug(f"program starting")
 
-# Import Standard Libraries
-import multiprocessing
-import traceback
-
-multiprocessing.freeze_support()
-
-# Import Custom Libraries
-import arc
 
 TITLE = r"""
      ++++  +++  ++++                     +++  ++++  +++                     _                    _            _

@@ -44,8 +44,6 @@
 """
 Graphical user interface for the Antecedent Precipitation Tool
 """
-
-import ftplib
 import os
 import subprocess
 import sys
@@ -72,7 +70,6 @@ try:
         anteProcess,
         check_usa,
         custom_watershed_query,
-        get_all,
         help_window,
         huc_query,
         netcdf_parse_all,
@@ -382,20 +379,6 @@ class AntGUI(object):
             text="Constant",
             variable=self.RADIO_VARIABLE_Y_AXIS,
             value=True,
-        )
-        self.RADIO_VARIABLE_FORECAST = tkinter.StringVar()
-        self.RADIO_VARIABLE_FORECAST.set(False)  # initialize
-        self.RADIO_BUTTON_FORECAST_INCLUDE = tkinter.ttk.Radiobutton(
-            self.master,
-            text="Include Forecast",
-            variable=self.RADIO_VARIABLE_FORECAST,
-            value=True,
-        )
-        self.RADIO_BUTTON_FORECAST_EXCLUDE = tkinter.ttk.Radiobutton(
-            self.master,
-            text="Don't Include Forecast",
-            variable=self.RADIO_VARIABLE_FORECAST,
-            value=False,
         )
         self.STRING_VARIABLE_LABEL_FOR_SHOW_OPTIONS_BUTTON = tkinter.StringVar()
         self.STRING_VARIABLE_LABEL_FOR_SHOW_OPTIONS_BUTTON.set("Show Options")
@@ -827,25 +810,6 @@ class AntGUI(object):
                 self.L.Wrap(f"Error connecting to NOAA server: {e}")
                 self.ncdc_working = False
 
-        # Try FTP
-        if self.ncdc_working is False:
-            self.L.Wrap(
-                "NOAA'S HTTP SERVER IS UNAVAILABLE - ATTEMPTING TO USE FTP SERVER AS A WORKAROUND..."
-            )
-            self.L.Wrap("Server Base URL = ftp://ftp.ncdc.noaa.gov/pub/data/ghcn/daily")
-            self.L.Wrap("Testing if NOAA's Server is currently accessible...")
-            try:
-                with ftplib.FTP("ftp.ncdc.noaa.gov") as ftp:
-                    ftp.login()
-                    content = BytesIO()
-                    ftp.retrbinary("RETR pub/data/ghcn/daily/readme.txt", content.write)
-                    if len(content.getvalue()) > 0:
-                        self.ncdc_working = True
-
-            except Exception as e:
-                self.L.Wrap(f"Error connecting to NOAA server: {e}")
-                self.ncdc_working = False
-
         # Print results out
         if self.ncdc_working is False:
             self.L.Wrap("                   ###################")
@@ -941,7 +905,6 @@ class AntGUI(object):
         custom_watershed_file = self.ENTRY_CUSTOM_WATERSHED_FILE.get()
         radio = self.RADIO_VARIABLE_PARAMETER.get()  # DISABLED
         fixed_y_max = self.RADIO_VARIABLE_Y_AXIS.get()  # DISABLED
-        forecast_enabled = self.RADIO_VARIABLE_FORECAST.get()  # DISABLED
         # Iterate through dates list
         for date_entry in self.date_entry_boxes:
             params = []
@@ -959,7 +922,6 @@ class AntGUI(object):
             params.append(watershed_scale)
             params.append(radio)
             params.append(fixed_y_max)
-            params.append(forecast_enabled)
             if watershed_scale == "Single Point":
                 self.calculate_or_add_batch(True, params)
             else:
@@ -980,7 +942,6 @@ class AntGUI(object):
         custom_watershed_file = self.ENTRY_CUSTOM_WATERSHED_FILE.get()
         radio = self.RADIO_VARIABLE_PARAMETER.get()  # DISABLED
         fixed_y_max = self.RADIO_VARIABLE_Y_AXIS.get()  # DISABLED
-        forecast_enabled = self.RADIO_VARIABLE_FORECAST.get()  # DISABLED
         # Get Start and End dates
         start_year, start_month, start_day = self.date_entry_boxes[0].get()
         end_year, end_month, end_day = self.date_entry_boxes[1].get()
@@ -1033,7 +994,6 @@ class AntGUI(object):
             params.append(watershed_scale)
             params.append(radio)
             params.append(fixed_y_max)
-            params.append(forecast_enabled)
             if watershed_scale == "Single Point":
                 self.calculate_or_add_batch(True, params)
             else:
@@ -1056,7 +1016,6 @@ class AntGUI(object):
         save_folder = self.ENTRY_OUTPUT_FOLDER.get()  # DISABLED
         radio = self.RADIO_VARIABLE_PARAMETER.get()  # DISABLED
         fixed_y_max = self.RADIO_VARIABLE_Y_AXIS.get()  # DISABLED
-        forecast_enabled = self.RADIO_VARIABLE_FORECAST.get()  # DISABLED
         watershed_scale = self.watershed_scope_string_var.get()
         custom_watershed_name = self.ENTRY_CUSTOM_WATERSHED_NAME.get()
         custom_watershed_file = self.ENTRY_CUSTOM_WATERSHED_FILE.get()
@@ -1112,7 +1071,6 @@ class AntGUI(object):
             params.append(watershed_scale)
             params.append(radio)
             params.append(fixed_y_max)
-            params.append(forecast_enabled)
             if watershed_scale == "Single Point":
                 self.calculate_or_add_batch(True, params)
             else:
@@ -1135,7 +1093,6 @@ class AntGUI(object):
         custom_watershed_name,
         custom_watershed_file,
         fixed_y_max,
-        forecast_enabled,
     ):
         """Test whether or not all parameters are valid"""
         parameters_valid = True
@@ -1271,7 +1228,6 @@ class AntGUI(object):
         watershed_scale = params[10]
         radio = params[11]
         fixed_y_max = params[12]
-        forecast_enabled = params[13]
         # Remove Spaces and Line Breaks from numeric fields (They were showing up when copying from Excel for some reason)
         latitude = latitude.replace(" ", "").replace("\n", "")
         longitude = longitude.replace(" ", "").replace("\n", "")
@@ -1399,8 +1355,6 @@ class AntGUI(object):
             save_folder = None
         if fixed_y_max == "1":
             fixed_y_max = True
-        if forecast_enabled == "1":
-            forecast_enabled = True
 
         # Set data_variable specific variables
         if radio == "Rain":
@@ -1533,7 +1487,7 @@ class AntGUI(object):
 
             if not len(input_list_list) > 1:
                 self.L.print_title("SINGLE POINT ANALYSIS")
-                run_list = input_list + [save_folder, forecast_enabled]
+                run_list = input_list + [save_folder]
 
                 self.L.Wrap("Running: " + str(run_list))
                 (
@@ -1734,7 +1688,6 @@ class AntGUI(object):
                 for count, specific_input_list in enumerate(current_input_list_list):
                     current_input_list_list[count] = specific_input_list + [
                         save_folder,
-                        forecast_enabled,
                     ]
 
                 # Create csv_writer
