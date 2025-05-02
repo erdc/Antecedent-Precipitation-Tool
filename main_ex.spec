@@ -17,8 +17,6 @@ block_cipher = None
 added_files = [
     ( '.\\images\\*', 'images' ),
     ('.\\data\\*', 'data'),
-    ( '.\\version', '.' ),
-    ( '.\\v\\main_ex', 'v' ),
     ( '.\\proj.db', '.'),
     (distributed_path, 'distributed')
 ]

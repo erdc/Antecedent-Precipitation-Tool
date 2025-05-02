@@ -92,8 +92,7 @@ except Exception as e:
     import netcdf_parse_all
     from utilities import web_wimp_scraper
 
-
-# FUNCTION DEFINITIONS
+VERSION_FOR_PATHS = f"v2_9_0"
 
 
 def get_json_multiple_ways(url):
@@ -424,34 +423,21 @@ class AnteProcess(object):
                             )
 
         if self.save_folder is not None:
-            # Get main_ex version for folder path
-            module_path = os.path.dirname(os.path.realpath(__file__))
-            root_folder = os.path.dirname(module_path)
-            version_files_folder = os.path.join(root_folder, "v")
-            main_version_file_path = os.path.join(version_files_folder, "main_ex")
-            with open(main_version_file_path, "r") as version_file:
-                for line in version_file:
-                    version_string = line.replace("\n", "")
-                    version_list = version_string.split(".")
-                    version_for_paths = "v{}_{}_{}".format(
-                        version_list[0], version_list[1], version_list[2]
-                    )
-                    break
             # Create PDF output Folder
             if self.data_type == "PRCP":
                 watershed_analysis = False
-                version_folder = os.path.join(self.save_folder, version_for_paths)
+                version_folder = os.path.join(self.save_folder, VERSION_FOR_PATHS)
                 coord_string = "{}, {}".format(self.site_lat, self.site_long)
                 self.folderPath = os.path.join(version_folder, coord_string)
             if self.data_type == "SNOW":
                 watershed_analysis = False
-                version_folder = os.path.join(self.save_folder, version_for_paths)
+                version_folder = os.path.join(self.save_folder, VERSION_FOR_PATHS)
                 snow_folder = os.path.join(version_folder, "Snowfall")
                 coord_string = "{}, {}".format(self.site_lat, self.site_long)
                 self.folderPath = os.path.join(snow_folder, coord_string)
             if self.data_type == "SNWD":
                 watershed_analysis = False
-                version_folder = os.path.join(self.save_folder, version_for_paths)
+                version_folder = os.path.join(self.save_folder, VERSION_FOR_PATHS)
                 snow_depth_folder = os.path.join(version_folder, "Snow Depth")
                 coord_string = "{}, {}".format(self.site_lat, self.site_long)
                 self.folderPath = os.path.join(snow_depth_folder, coord_string)
@@ -1841,11 +1827,11 @@ class AnteProcess(object):
             ax4 = plt.subplot2grid((9, 10), (8, 3), colspan=7, rowspan=1)
             try:
                 images_folder = os.path.join(ROOT, "images")
-                logo_file = os.path.join(images_folder, "RD_3_0.png")
+                logo_file = os.path.join(images_folder, "RD_2_9.png")
                 logo = plt.imread(logo_file)
             except:
                 images_folder = os.path.join(sys.prefix, "images")
-                logo_file = os.path.join(images_folder, "RD_3_0.png")
+                logo_file = os.path.join(images_folder, "RD_2_9.png")
                 logo = plt.imread(logo_file)
             img = fig.figimage(X=logo, xo=118, yo=8)
 

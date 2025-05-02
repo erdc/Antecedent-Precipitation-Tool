@@ -104,7 +104,7 @@ except Exception:
     import JLog
 """
 
-VERSION_FOR_PATHS = f"v3_0_0"
+VERSION_FOR_PATHS = anteProcess.VERSION_FOR_PATHS
 
 
 def click_help_button():
@@ -209,6 +209,7 @@ class AntGUI(object):
             row=self.row, column=1, sticky="nw", columnspan=1
         )
         self.flow_norm_analysis_selection.deselect()
+        self.flow_norm_analysis_selection.config(state=tkinter.DISABLED)
 
         # ---HELP BUTTON---#
         self.help_button = tkinter.ttk.Button(
@@ -681,9 +682,11 @@ class AntGUI(object):
         if self.gridded:
             if netcdf_parse_all.check_thredds_status():
                 self.grid_selection.select()
+                error_message = "Gridded analysis is currently using a more reliable but slower download method for gridded data. This process could take as long as a few hours. Please leave the APT open to process a gridded run."
+                tkinter.messagebox.showinfo(title="Warning", message=error_message)
             else:
                 error_message = (
-                    "Unable to retrieve data from www.ncei.noaa.gov/thredds.\n"
+                    "Unable to retrieve data from www.ncei.noaa.gov/\n"
                     + "Gridded data is currently unavailable.\n"
                     + "\n"
                     + "If gridded data support is needed, please wait a few minutes and try again.\n"
