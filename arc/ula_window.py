@@ -28,37 +28,21 @@
 #  copyrighted portions.  Copyrighted portions of the software are not in the
 #  public domain.
 
+######################################
+##  ------------------------------- ##
+##           ula_window.py          ##
+##  ------------------------------- ##
+##     Written by: Jason Deters     ##
+##     Edited by: Chris French      ##
+##  ------------------------------- ##
+##    Last Edited on:  2025-07-09   ##
+##  ------------------------------- ##
+######################################
 
 import os
-import platform
 import sys
-import time
 import tkinter
 import tkinter.ttk
-
-try:
-    import utils
-except:
-    from . import utils
-
-if platform.system() == "Windows":
-    import winshell
-
-
-def create_shortcut():
-    # setup the paths
-    exe_path = utils.find_file_or_dir(os.getcwd(), "*main*.exe")
-    icon_path = utils.find_file_or_dir(os.getcwd(), "Graph.ico")
-    shortcut_path = os.path.join(winshell.desktop(), "Run APT.lnk")
-
-    # create the shprtcut
-    winshell.CreateShortcut(
-        Path=shortcut_path,
-        Target=exe_path,
-        Icon=(icon_path, 0),
-        Description="Antecedent Precipitation Tool",
-    )
-
 
 USACE_ULA_TEXT = """This software was developed by United States Army Corps of Engineers (USACE)
 employees in the course of their official duties.  USACE used copyrighted,
@@ -189,7 +173,6 @@ class UlaWindow(object):
             self.button_accept.config(state="disabled")
 
     def click_accept_button(self):
-        create_shortcut()
         self.master.destroy()  # Close ULA window
         self.write_ula_accepted_file()
 

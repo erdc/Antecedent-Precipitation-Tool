@@ -69,12 +69,14 @@ try:
     )
     from .getElev import batch, get_elevation
     from .utilities import JLog, web_wimp_scraper
+    from .utils import ini_config
 except Exception as e:
     import date_calcs
     import process_manager
     import query_climdiv
     import station_manager
     from getElev import get_elevation
+    from utils import ini_config
 
     # Add utilities folder to path directly
     PYTHON_SCRIPTS_FOLDER = os.path.join(ROOT, "Python Scripts")
@@ -92,7 +94,11 @@ except Exception as e:
     import netcdf_parse_all
     from utilities import web_wimp_scraper
 
-VERSION_FOR_PATHS = f"v2_9_0"
+default = {
+    "version": {"VERSION": "v3"},
+}
+config = ini_config(default)
+VERSION = config.get("version", "VERSION")
 
 
 def get_json_multiple_ways(url):
@@ -426,18 +432,18 @@ class AnteProcess(object):
             # Create PDF output Folder
             if self.data_type == "PRCP":
                 watershed_analysis = False
-                version_folder = os.path.join(self.save_folder, VERSION_FOR_PATHS)
+                version_folder = os.path.join(self.save_folder, VERSION)
                 coord_string = "{}, {}".format(self.site_lat, self.site_long)
                 self.folderPath = os.path.join(version_folder, coord_string)
             if self.data_type == "SNOW":
                 watershed_analysis = False
-                version_folder = os.path.join(self.save_folder, VERSION_FOR_PATHS)
+                version_folder = os.path.join(self.save_folder, VERSION)
                 snow_folder = os.path.join(version_folder, "Snowfall")
                 coord_string = "{}, {}".format(self.site_lat, self.site_long)
                 self.folderPath = os.path.join(snow_folder, coord_string)
             if self.data_type == "SNWD":
                 watershed_analysis = False
-                version_folder = os.path.join(self.save_folder, VERSION_FOR_PATHS)
+                version_folder = os.path.join(self.save_folder, VERSION)
                 snow_depth_folder = os.path.join(version_folder, "Snow Depth")
                 coord_string = "{}, {}".format(self.site_lat, self.site_long)
                 self.folderPath = os.path.join(snow_depth_folder, coord_string)
@@ -1771,6 +1777,11 @@ class AnteProcess(object):
                         description_table_colors.append([light_grey, white])
                     if wet_dry_season_result == "Dry Season":
                         description_table_colors.append([light_grey, light_red])
+                else:
+                    description_table_values.append(
+                        [r"WebWIMP H$_2$O Balance", "Not available"]
+                    )
+                    description_table_colors.append([light_grey, white])
             except Exception:
                 wet_dry_season_result = "Error"
                 self.log.Wrap(traceback.format_exc())
@@ -1827,11 +1838,11 @@ class AnteProcess(object):
             ax4 = plt.subplot2grid((9, 10), (8, 3), colspan=7, rowspan=1)
             try:
                 images_folder = os.path.join(ROOT, "images")
-                logo_file = os.path.join(images_folder, "RD_2_9.png")
+                logo_file = os.path.join(images_folder, "RD_3_0.png")
                 logo = plt.imread(logo_file)
             except:
                 images_folder = os.path.join(sys.prefix, "images")
-                logo_file = os.path.join(images_folder, "RD_2_9.png")
+                logo_file = os.path.join(images_folder, "RD_3_0.png")
                 logo = plt.imread(logo_file)
             img = fig.figimage(X=logo, xo=118, yo=8)
 

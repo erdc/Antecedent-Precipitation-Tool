@@ -37,7 +37,7 @@
 ##      Edited by: Chase Hamilton   ##
 ##      Edited by: Chris French     ##
 ##  ------------------------------- ##
-##    Last Edited on:  2024-05-08   ##
+##    Last Edited on:  2025-07-09   ##
 ##  ------------------------------- ##
 ######################################
 
@@ -104,7 +104,7 @@ except Exception:
     import JLog
 """
 
-VERSION_FOR_PATHS = anteProcess.VERSION_FOR_PATHS
+VERSION_FOR_PATHS = anteProcess.VERSION
 
 
 def click_help_button():
@@ -209,7 +209,6 @@ class AntGUI(object):
             row=self.row, column=1, sticky="nw", columnspan=1
         )
         self.flow_norm_analysis_selection.deselect()
-        self.flow_norm_analysis_selection.config(state=tkinter.DISABLED)
 
         # ---HELP BUTTON---#
         self.help_button = tkinter.ttk.Button(

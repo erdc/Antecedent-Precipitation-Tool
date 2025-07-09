@@ -36,9 +36,9 @@
 ##                                  ##
 ##    Written by: Jason Deters      ##
 ##     Edited by: Chase Hamilton    ##
-##  Rewritten by: Chris French      ##
+##     Edited by: Chris French      ##
 ##  ------------------------------- ##
-##    Last Edited on: 2024-04-08    ##
+##    Last Edited on:  2025-07-09   ##
 ##  ------------------------------- ##
 ######################################
 

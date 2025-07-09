@@ -33,9 +33,8 @@
 ##           local_norm.py          ##
 ##  ------------------------------- ##
 ##     Written by: Chris French     ##
-##                                  ##
 ##  ------------------------------- ##
-##    Last Edited on:  2024-06-17   ##
+##    Last Edited on:  2025-07-09   ##
 ##  ------------------------------- ##
 ######################################
 
@@ -48,7 +47,7 @@ import multiprocessing
 import os
 import time
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import lru_cache
 
 import dask
@@ -73,9 +72,14 @@ from tqdm import tqdm
 
 # Internal Imports
 try:
-    from arc.utils import find_file_or_dir, ini_config
+    from arc.manifest import Manifest
+    from arc.utils import find_file_or_dir, ini_config, setup_logger
 except:
-    from utils import find_file_or_dir, ini_config
+    from manifest import Manifest
+    from utils import find_file_or_dir, ini_config, setup_logger
+
+if __name__ == "__main__":
+    setup_logger()
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +93,8 @@ default = {
         "ENABLE_USGS_CALC": 1,
         "NWM_TIMEOUT_MINS": 60,
         "MTF_CONVERSION_FAC": 35.3147,
-    }
+    },
+    "version": {"VERSION": "v3"},
 }
 
 config = ini_config(default)
@@ -101,10 +106,12 @@ ENABLE_NWM_CALC = config.getint("local_norm", "ENABLE_NWM_CALC")
 ENABLE_USGS_CALC = config.getint("local_norm", "ENABLE_USGS_CALC")
 MTF_CONVERSION_FAC = config.getfloat("local_norm", "MTF_CONVERSION_FAC")
 NWM_TIMEOUT_MINS = config.getint("local_norm", "NWM_TIMEOUT_MINS")
+VERSION = config.get("version", "VERSION")
 
 from osgeo import gdal
 
 logger.debug(f"gdal install is: {gdal.VersionInfo()}")
+run_manifest = Manifest()
 
 # ### GENERAL FUNCTIONS ###
 
@@ -160,7 +167,7 @@ def cleanup_stats_df(stats_df):
     return clean_df
 
 
-def calc_stats(flow_df, period_end="2010-12-31"):
+def calc_stats(flow_df, period_end="2022-12-31"):
     """
     Calculate daily discharge statistics for a given period.
 
@@ -173,6 +180,10 @@ def calc_stats(flow_df, period_end="2010-12-31"):
     """
     flow_df["time"] = pd.to_datetime(flow_df["time"])
     filtered_df = flow_df[flow_df["time"] <= pd.to_datetime(period_end)]
+
+    earliest_date = filtered_df["time"].min().strftime("%Y-%m-%d")
+    latest_date = filtered_df["time"].max().strftime("%Y-%m-%d")
+    hist_por = f"{earliest_date}->{latest_date}"
 
     # group by day and calculate the percentile values
     stats_df = (
@@ -214,7 +225,8 @@ def calc_stats(flow_df, period_end="2010-12-31"):
     # rename the 'time' column and return
     stats_df.reset_index(inplace=True)
     stats_df.rename(columns={"time": "day"}, inplace=True)
-    return cleanup_stats_df(stats_df)
+    clean_df = cleanup_stats_df(stats_df)
+    return clean_df, hist_por
 
 
 def calc_percentile(flow, df, date):
@@ -275,8 +287,6 @@ def get_usgs_flow(gage_id, date):
     base_url = "http://waterservices.usgs.gov/nwis/dv"
     try:
         date = datetime.strptime(date, "%Y-%m-%d")
-        # start_date = date - timedelta(days=30*365 + 1)
-
         params = {
             "format": "rdb",
             "sites": gage_id,
@@ -319,15 +329,76 @@ def get_usgs_flow(gage_id, date):
         return pd.DataFrame()
 
 
-def get_local_gages(lat, lon, max_dist=0):
+@lru_cache(maxsize=CACHE_SIZE)
+def get_region_gages(STUSPS, date):
+    base_url = "http://waterservices.usgs.gov/nwis/site"
+    date = datetime.strptime(date, "%Y-%m-%d")
+    start_date = date - timedelta(days=30 * 365 + 1)
+    try:
+        params = {
+            "stateCd": f"{STUSPS}",
+            "siteStatus": "active",
+            "startDT": start_date.strftime("%Y-%m-%d"),
+            "endDT": date.strftime("%Y-%m-%d"),
+        }
+
+        response = requests.get(base_url, params=params, timeout=15)
+        response.raise_for_status()
+
+        reader = csv.reader(io.StringIO(response.text), delimiter="\t")
+
+        data = []
+        error_count = 0
+        for row in reader:
+            if (
+                row[0].startswith("#")
+                or row[0].startswith("5")
+                or row[0].startswith("a")
+            ):
+                continue
+            if len(row) < 4:
+                continue
+            gage_id = row[1]
+            station_name = row[2]
+            try:
+                lat = round(float(row[4]), 3)
+                lon = round(float(row[5]), 3)
+                data.append(
+                    {
+                        "STATION_NM": station_name,
+                        "GAGEID": gage_id,
+                        "LatSite": lat,
+                        "LonSite": lon,
+                    }
+                )
+            except:
+                if error_count <= 10:
+                    error_count += 1
+                    logger.debug(f"gage id {gage_id} in {STUSPS} is missing data.")
+                continue
+
+        df = pd.DataFrame(data)
+        return df
+    except Exception as e:
+        logger.error(f"Error retrieving gage list for {STUSPS}: {str(e)}")
+        return pd.DataFrame()
+
+
+def get_local_gages(lat, lon, date, max_dist=0):
     # Open gage_dat.csv
     data_path = find_file_or_dir(os.getcwd(), "gage_data.csv")
+    usps_code = get_special_region(lat=lat, lon=lon)
 
-    df = pd.read_csv(data_path, dtype={"GAGEID": str})
-    if REF_GAGES_ONLY:
-        filtered_df = df[df["GagesII"] == "Ref"].copy()
+    if usps_code == "CONUS":
+        df = pd.read_csv(data_path, dtype={"GAGEID": str})
+        if REF_GAGES_ONLY:
+            filtered_df = df[df["GagesII"] == "Ref"].copy()
+        else:
+            filtered_df = df
+    elif usps_code != -1:
+        filtered_df = get_region_gages(usps_code, date)
     else:
-        filtered_df = df
+        return pd.DataFrame()
 
     # Calculate distances for each gage_id
     filtered_df["dist"] = filtered_df.apply(
@@ -341,6 +412,7 @@ def get_local_gages(lat, lon, max_dist=0):
     sorted_df = filtered_df.sort_values("dist")
     sorted_df = sorted_df[["STATION_NM", "GAGEID", "LatSite", "LonSite", "dist"]]
     sorted_df.columns = ["STATION_NM", "GAGEID", "lat", "lon", "dist"]
+    sorted_df = sorted_df.head(500)
 
     # Return the sorted DataFrame
     return sorted_df
@@ -349,7 +421,15 @@ def get_local_gages(lat, lon, max_dist=0):
 def local_norm_usgs(lat, lon, date, save_path=None):
     try:
         logger.info("Initializing USGS norm script...")
-        local_gage_df = get_local_gages(lat, lon, MAX_SEARCH_RANGE)
+        run_manifest.reset()
+        run_manifest.update(key="analysis_type", value="USGS_norm")
+        run_manifest.update(key="analysis_date", value=date)
+        run_manifest.update(key="analysis_pos", value=f"{lat},{lon}")
+        run_manifest.update(key="apt_version", value=VERSION)
+        run_manifest.update(key="data_source", value="http://waterservices.usgs.gov")
+        local_gage_df = get_local_gages(
+            lat=lat, lon=lon, date=date, max_dist=MAX_SEARCH_RANGE
+        )
         gage_id_list = local_gage_df["GAGEID"].tolist()
         logger.debug(f"gage ids local to point: {gage_id_list[:NUM_LOCAL_GAGES]}")
 
@@ -383,7 +463,12 @@ def local_norm_usgs(lat, lon, date, save_path=None):
                 )
                 continue
             flow = flow[0]
-            stat_df = calc_stats(flow_df, date)
+
+            previous_day = (
+                datetime.strptime(date, "%Y-%m-%d") - timedelta(days=1)
+            ).strftime("%Y-%m-%d")
+
+            stat_df, hist_por = calc_stats(flow_df, previous_day)
 
             day_of_year = pd.to_datetime(date).strftime("%m-%d")
             percentile_stats = stat_df.loc[stat_df["day"] == day_of_year].copy()
@@ -407,6 +492,7 @@ def local_norm_usgs(lat, lon, date, save_path=None):
 
             percentile_stats["flow percentile"] = perc
             percentile_stats["condition"] = normalacy
+            percentile_stats["hist period of record"] = hist_por
             summary_df = pd.concat([summary_df, percentile_stats], ignore_index=True)
             if perc is not None:
                 progress_bar.update()
@@ -416,6 +502,7 @@ def local_norm_usgs(lat, lon, date, save_path=None):
                 description += f"flow = {flow} cfs\n"
                 description += f"flow percentile= {perc:.1f}%\n"
                 description += f"flow is {normalacy} \n"
+                description += f"Historic period of record {hist_por} \n"
 
                 point = kml.newpoint(
                     name=gage_id, coords=[loc_tuple], description=description
@@ -446,12 +533,21 @@ def local_norm_usgs(lat, lon, date, save_path=None):
                     break
 
         # Ensure the progress bar is closed properly
+        remaining = NUM_LOCAL_GAGES - num_found
+        if remaining > 0:
+            progress_bar.update(remaining)
         progress_bar.close()
 
         point = kml.newpoint(name="QUERY POINT", coords=[(lon, lat)])
         point.style.iconstyle.icon.href = (
             "http://maps.google.com/mapfiles/kml/paddle/purple-stars.png"
         )
+        if summary_df.empty:
+            logger.warning(
+                f"{lat}, {lon} on {date} could not find enough data to complete a USGS analysis."
+            )
+            return -1
+
         if save_path is not None:
             logger.info("Outputing processed data...")
             kml.save(os.path.join(save_path, f"USGS_STATS_{date}.kml"))
@@ -471,10 +567,11 @@ def local_norm_usgs(lat, lon, date, save_path=None):
                     ]
                 ]
             ]
-
             summary_df.to_csv(
                 os.path.join(save_path, f"USGS_STATS_{date}.csv"), index=False
             )
+            data_dir = find_file_or_dir(os.getcwd(), "data")
+            run_manifest.write_to_file(os.path.join(data_dir, "manifest.json"))
         logger.info("USGS norm script complete")
         return 1
     except Exception as e:
@@ -512,23 +609,36 @@ def find_closest_comids(shapefile_path, lat, lon, max_dist=0):
     sorted_df["lat"] = sorted_df.geometry.y
     sorted_df["lon"] = sorted_df.geometry.x
 
-    return sorted_df[["comid", "dist", "lat", "lon"]]
+    return sorted_df[["COMID", "dist", "lat", "lon"]]
 
 
 @lru_cache(maxsize=CACHE_SIZE)
-def download_nwm_flow(date, data_dir="data"):
+def download_nwm_flow(date, STUSPS, data_dir="data"):
     date_str = date.strftime("%Y%m%d")
 
-    if os.path.exists(os.path.join(data_dir, f"nwm_data_{date_str}.nc")):
+    if not os.path.exists(data_dir):
+        print(
+            "This should not happen, but the data directory was not found by download process."
+        )
+        return -1
+
+    nc_filepath = os.path.join(data_dir, f"nwm_data_{date_str}_{STUSPS}.nc")
+    if os.path.exists(nc_filepath):
         return 0
 
     # Construct the URL for the Analysis and Assimilation data
-    base_url = "https://noaanwm.blob.core.windows.net/nwm"
-    file_name = (
-        f"nwm.{date_str}/short_range/nwm.t00z.short_range.channel_rt.f001.conus.nc"
-    )
-    # file_name = f"nwm.{date_str}/forcing_analysis_assimi/nwm.t00z.forcing_analysis_assimi.channel_rt.tm00.conus.nc"
-    url = f"{base_url}/{file_name}"
+    # https://storage.googleapis.com/national-water-model/nwm.20230920/analysis_assim
+    base_url = f"https://storage.googleapis.com/national-water-model/nwm.{date_str}/analysis_assim"
+    if STUSPS == "CONUS":
+        file_name = f"/nwm.t00z.analysis_assim.channel_rt.tm02.conus.nc"
+    elif STUSPS == "HI":
+        file_name = f"_hawaii/nwm.t00z.analysis_assim.channel_rt.tm0245.hawaii.nc"
+    elif STUSPS == "PR":
+        file_name = f"_puertorico/nwm.t00z.analysis_assim.channel_rt.tm02.puertorico.nc"
+    elif STUSPS == "AK":
+        file_name = f"_alaska/nwm.t00z.analysis_assim.channel_rt.tm02.alaska.nc"
+    url = f"{base_url}{file_name}"
+    logger.debug(url)
 
     try:
         # Download the NetCDF file
@@ -537,12 +647,6 @@ def download_nwm_flow(date, data_dir="data"):
             return response.status_code
 
         # Save the NetCDF file locally
-        try:
-            data_dir = find_file_or_dir(os.path.join(os.getcwd(), ".."), data_dir)
-        except:
-            data_dir = os.path.join(os.getcwd(), "data")
-            os.makedirs(data_dir, exist_ok=True)
-        nc_filepath = os.path.join(data_dir, f"nwm_data_{date_str}.nc")
         with open(nc_filepath, "wb") as f:
             f.write(response.content)
 
@@ -553,13 +657,10 @@ def download_nwm_flow(date, data_dir="data"):
         return -1
 
 
-def download_nwm_subprocess(comid_list, data_dir="data"):
+def download_nwm_subprocess(comid_list, nwm_uri, data_dir="data"):
     # file named by closest point, so if already exist no need to download
     if os.path.exists(os.path.join(data_dir, f"nwm_historic_{comid_list[0]}.csv")):
         return 0
-
-    # setup data source URL
-    nwm_uri = "s3://noaa-nwm-retrospective-3-0-pds/CONUS/zarr/chrtout.zarr"
 
     # open the dataset
     ds = xr.open_zarr(fsspec.get_mapper(nwm_uri, anon=True))
@@ -596,13 +697,28 @@ def download_nwm_subprocess(comid_list, data_dir="data"):
     return 0
 
 
-def download_nwm_historic(comid_list, data_dir="data", timeout=6000):
+def download_nwm_historic(comid_list, STUSPS="CONUS", data_dir="data", timeout=6000):
     logger.info(f"Downloading NWM data will begin shortly.")
     logger.info(f"Timeout is currently set to {int(timeout/60)} minutes.")
 
+    # setup data source URL
+    uri_dict = {
+        "CONUS": "s3://noaa-nwm-retrospective-3-0-pds/CONUS/zarr/chrtout.zarr",
+        "AK": "s3://noaa-nwm-retrospective-3-0-pds/Alaska/zarr/chrtout.zarr",
+        "HI": "s3://noaa-nwm-retrospective-3-0-pds/Hawaii/zarr/chrtout.zarr",
+        "PR": "s3://noaa-nwm-retrospective-3-0-pds/PR/zarr/chrtout.zarr",
+    }
+    nwm_uri = uri_dict.get(STUSPS, None)
+
+    if nwm_uri == None:
+        logger.warning(
+            f"Invalid STUSPS code {STUSPS} in retrospective download process"
+        )
+        return -1
+
     # Create a Process object
     process = multiprocessing.Process(
-        target=download_nwm_subprocess, args=(comid_list, data_dir)
+        target=download_nwm_subprocess, args=(comid_list, nwm_uri, data_dir)
     )
 
     # Start the process
@@ -621,7 +737,7 @@ def download_nwm_historic(comid_list, data_dir="data", timeout=6000):
         return process.exitcode
 
 
-def get_nwm_flow(comid_list, date, data_dir="data"):
+def get_nwm_flow(comid_list, date, STUSPS, data_dir="data"):
     if isinstance(date, str):
         try:
             # Assuming the date string is in the format 'YYYY-MM-DD'
@@ -629,14 +745,9 @@ def get_nwm_flow(comid_list, date, data_dir="data"):
         except ValueError:
             raise ValueError("Incorrect date format, should be YYYY-MM-DD")
 
-    # Check if the year is before 2022
-    if date.year < 2022:
-        print("2022 earliest NWM analysis can be run, limited forcast data before 2022")
-        return -1
-
     download_attempt = 0
     while download_attempt < 3:
-        ret = download_nwm_flow(date, data_dir)
+        ret = download_nwm_flow(date, STUSPS=STUSPS, data_dir=data_dir)
         if ret == 0:
             break
         elif ret != -1:
@@ -648,7 +759,7 @@ def get_nwm_flow(comid_list, date, data_dir="data"):
 
     date_str = date.strftime("%Y%m%d")
     try:
-        nc_filepath = find_file_or_dir(os.getcwd(), f"nwm_data_{date_str}.nc")
+        nc_filepath = find_file_or_dir(os.getcwd(), f"nwm_data_{date_str}_{STUSPS}.nc")
     except FileNotFoundError:
         print("NWM analysis does not have enough data to run")
         return -1
@@ -663,14 +774,14 @@ def get_nwm_flow(comid_list, date, data_dir="data"):
     points = {}
     num_found = 0
     for _, row in comid_list.iterrows():
-        comid = int(row["comid"])
+        comid = int(row["COMID"])
         dist = row["dist"]
 
         # Get the flow by feature id
         flow = streamflow[np.where(feature_id[:] == comid)[0]]
 
         # Check if flow data is available and not missing
-        if (flow != -999900) and not (np.ma.is_masked(flow)):
+        if not flow.mask:
             # check if the conversion factor was meters to feet
             actual_flow = round(float(flow) * MTF_CONVERSION_FAC, 4)
             if abs(MTF_CONVERSION_FAC - 35.3147) < 0.001:
@@ -687,7 +798,7 @@ def get_nwm_flow(comid_list, date, data_dir="data"):
             point = {
                 "flow": actual_flow,
                 "flow units": unit,
-                "comid": str(comid),
+                "COMID": str(comid),
                 "distance": round(float(dist), 3),
                 "distance unit": "mi",
                 "date": date.strftime("%Y-%m-%d"),
@@ -700,11 +811,60 @@ def get_nwm_flow(comid_list, date, data_dir="data"):
     return points
 
 
+def update_nwm_manifest(date, lat, lon, STUSPS):
+    # record basic info
+    run_manifest.reset()
+    run_manifest.update(key="analysis_type", value="NWM_norm")
+    run_manifest.update(key="analysis_date", value=date)
+    run_manifest.update(key="analysis_pos", value=f"{lat},{lon}")
+    run_manifest.update(key="apt_version", value=VERSION)
+
+    # derive and record historic source
+    uri_dict = {
+        "CONUS": "s3://noaa-nwm-retrospective-3-0-pds/CONUS/zarr/chrtout.zarr",
+        "AK": "s3://noaa-nwm-retrospective-3-0-pds/Alaska/zarr/chrtout.zarr",
+        "HI": "s3://noaa-nwm-retrospective-3-0-pds/Hawaii/zarr/chrtout.zarr",
+        "PR": "s3://noaa-nwm-retrospective-3-0-pds/PR/zarr/chrtout.zarr",
+    }
+    nwm_uri = uri_dict.get(STUSPS, None)
+    run_manifest.update(key="NWM_historic_data", value=nwm_uri)
+
+    # derive analysis assim source
+    if isinstance(date, str):
+        date_obj = datetime.strptime(date, "%Y-%m-%d")
+    else:
+        date_obj = date
+    date_str = date_obj.strftime("%Y%m%d")
+    base_url = f"https://storage.googleapis.com/national-water-model/nwm.{date_str}/analysis_assim"
+    if STUSPS == "CONUS":
+        file_name = f"/nwm.t00z.analysis_assim.channel_rt.tm02.conus.nc"
+    elif STUSPS == "HI":
+        file_name = f"_hawaii/nwm.t00z.analysis_assim.channel_rt.tm0245.hawaii.nc"
+    elif STUSPS == "PR":
+        file_name = f"_puertorico/nwm.t00z.analysis_assim.channel_rt.tm02.puertorico.nc"
+    elif STUSPS == "AK":
+        file_name = f"_alaska/nwm.t00z.analysis_assim.channel_rt.tm02.alaska.nc"
+    url = f"{base_url}{file_name}"
+    run_manifest.update(key="NWM_analysis_data", value=url)
+
+
 def local_norm_nwm(lat, lon, date, save_path=None):
     # setup data dependancies and find local points with data
     logger.info("Initializing nwm norm script...")
+
+    if isinstance(date, str):
+        date_obj = datetime.strptime(date, "%Y-%m-%d")
+    else:
+        date_obj = date
+
+    if date_obj < datetime(2023, 7, 21):
+        print(
+            "2023-07-21 earliest NWM analysis can be run, limited data before 2023-07-21"
+        )
+        return -1
+
     data_dir = find_file_or_dir(os.getcwd(), "data")
-    shapefile_path = find_file_or_dir(os.getcwd(), "comid_pos.shp")
+    shapefile_path = find_file_or_dir(os.getcwd(), "nwm_COMID_APTv3.0.shp")
     local_comids = find_closest_comids(shapefile_path, lat, lon)
     if len(local_comids) == 0:
         logger.error(
@@ -713,16 +873,18 @@ def local_norm_nwm(lat, lon, date, save_path=None):
         return -1
 
     # get flow on observation date at local points
-    flow_points = get_nwm_flow(local_comids, date, data_dir=data_dir)
+    STUSPS = get_special_region(lat=lat, lon=lon)
+    update_nwm_manifest(date=date, lat=lat, lon=lon, STUSPS=STUSPS)
+    flow_points = get_nwm_flow(local_comids, date, STUSPS=STUSPS, data_dir=data_dir)
     if flow_points == -1:
         return -1
-    comid_list = [int(point["comid"]) for point in flow_points.values()]
+    comid_list = [int(point["COMID"]) for point in flow_points.values()]
     logger.debug(f"local comid: {comid_list}")
 
     # download historic (1990-2020) nwm flow data
     if not os.path.exists(os.path.join(data_dir, f"nwm_historic_{comid_list[0]}.csv")):
         ret_code = download_nwm_historic(
-            comid_list, data_dir, timeout=NWM_TIMEOUT_MINS * 60
+            comid_list, STUSPS=STUSPS, data_dir=data_dir, timeout=NWM_TIMEOUT_MINS * 60
         )
         if ret_code != 0:
             logger.error(
@@ -740,17 +902,22 @@ def local_norm_nwm(lat, lon, date, save_path=None):
     summary_df = pd.DataFrame()
     for column in tqdm(
         df.columns[1:],
-        unit="comid",
+        unit="COMID",
         ascii=r" \|/-~",
         desc="Processing",
         dynamic_ncols=True,
     ):
+        if str(column) not in flow_points:
+            logger.debug(
+                f"'{str(column)}' not found. Available: {sorted(flow_points.keys())}"
+            )
+            continue
         dataset_df = df[[df.columns[0], column]].copy()
         flow = flow_points[str(column)]["flow"]
         dataset_df.rename(
             columns={df.columns[0]: "time", column: "discharge"}, inplace=True
         )
-        stat_df = calc_stats(dataset_df)
+        stat_df, hist_por = calc_stats(dataset_df)
         # perc = calc_percentile(flow, stat_df, date)
         perc = calc_percentile(flow, dataset_df, date)
 
@@ -767,21 +934,23 @@ def local_norm_nwm(lat, lon, date, save_path=None):
 
         day_of_year = pd.to_datetime(date).strftime("%m-%d")
         percentile_stats = stat_df.loc[stat_df["day"] == day_of_year].copy()
-        percentile_stats["comid"] = str(column)
+        percentile_stats["COMID"] = str(column)
         percentile_stats["flow (cfs)"] = flow
         percentile_stats["flow percentile"] = perc
         percentile_stats["condition"] = normalacy
+
         local_dist = local_comids.loc[
-            local_comids["comid"] == int(column), "dist"
+            local_comids["COMID"] == int(column), "dist"
         ].values
         if len(local_dist) >= 1:
             percentile_stats["distance (mi)"] = f"{local_dist[0]:.2f}"
         else:
             percentile_stats["distance (mi)"] = "-1"
+        percentile_stats["hist period of record"] = hist_por
         summary_df = pd.concat([summary_df, percentile_stats], ignore_index=True)
 
-        # try to get the location of the comid, if not just use the observation point
-        matching_comid = local_comids[local_comids["comid"] == int(column)]
+        # try to get the location of the COMID, if not just use the observation point
+        matching_comid = local_comids[local_comids["COMID"] == int(column)]
         if not matching_comid.empty:
             loc_tuple = (
                 matching_comid["lon"].values[0],
@@ -794,6 +963,7 @@ def local_norm_nwm(lat, lon, date, save_path=None):
             description += f"flow = {flow} cfs\n"
             description += f"flow percentile= {perc:.1f}%\n"
             description += f"flow is {normalacy} \n"
+            description += f"Historic period of record {hist_por} \n"
         else:
             loc_tuple = (lon, lat)
             description = "POINT HAD AN ERROR."
@@ -838,15 +1008,15 @@ def local_norm_nwm(lat, lon, date, save_path=None):
         kml.save(os.path.join(save_path, f"NWM_STATS_{date}.kml"))
 
         summary_df = summary_df[
-            ["comid", "day", "flow (cfs)", "flow percentile", "condition"]
+            ["COMID", "day", "flow (cfs)", "flow percentile", "condition"]
             + [
                 col
                 for col in summary_df.columns
                 if col
-                not in ["day", "comid", "flow (cfs)", "flow percentile", "condition"]
+                not in ["day", "COMID", "flow (cfs)", "flow percentile", "condition"]
             ]
         ]
-
+        run_manifest.write_to_file(os.path.join(data_dir, "manifest.json"))
         summary_df.to_csv(os.path.join(save_path, f"NWM_STATS_{date}.csv"), index=False)
 
     # job done
@@ -858,28 +1028,32 @@ def local_norm_nwm(lat, lon, date, save_path=None):
 
 
 def local_norm(lat, lon, date, save_path=None):
-    if ENABLE_USGS_CALC:
-        local_norm_usgs(lat, lon, date, save_path)
-    if ENABLE_NWM_CALC:
-        local_norm_nwm(lat, lon, date, save_path)
+    usps_code = get_special_region(lat=lat, lon=lon)
+
+    if usps_code in ["VI"]:
+        logger.warning(f"{usps_code} is not available")
+        return
+
+    if ENABLE_USGS_CALC and (usps_code != -1):
+        local_norm_usgs(lat=lat, lon=lon, date=date, save_path=save_path)
+    if ENABLE_NWM_CALC and (usps_code != -1):
+        if usps_code in ["CONUS", "PR", "HI", "AK"]:
+            local_norm_nwm(lat, lon, date, save_path)
 
 
 def test():
-    # lat, lon = 30, -90
-    # lat, lon = 29.331518, -94.800046
     points = [
-        (18.217, -66.289),
+        (30, -90),
         (61.1925, -149.8200),
         (21.2904, -157.7299),
+        (18.217, -66.289),
         (13.4091, 144.7808),
         (18.4014, -65.8110),
         (18.3291, -64.8973),
-        (30, -90),
         (29.331518, -94.800046),
         (55, -105),
     ]
-
-    date = "2022-02-22"
+    date = "2025-06-01"
     try:
         data_dir = find_file_or_dir(os.getcwd(), "data")
     except:
@@ -887,8 +1061,11 @@ def test():
 
     for point in points:
         lat, lon = point
-        # local_norm(lat, lon, date, data_dir)
-        print(get_special_region(lat=lat, lon=lon))
+        usps_code = get_special_region(lat=lat, lon=lon)
+        special_save = os.path.join(data_dir, f"{usps_code}", f"{lat}, {lon}")
+        os.makedirs(special_save, exist_ok=True)
+        logger.info(f"[{usps_code}] {lat}, {lon}")
+        local_norm(lat=lat, lon=lon, date=date, save_path=special_save)
 
 
 def generate_conus_grid(interval=10):
@@ -962,11 +1139,9 @@ def test_grid():
 
 
 if __name__ == "__main__":
-    # local_norm(lat, lon, date)
-    # test_grid()
-
     start_time = time.time()
+    logger.info(f"SCRIPT START")
     test()
     end_time = time.time()
     elapsed_time = end_time - start_time
-    print(f"elapsed time: {elapsed_time:.1f} seconds\n")
+    logger.info(f"elapsed time: {elapsed_time:.1f} seconds\n")
