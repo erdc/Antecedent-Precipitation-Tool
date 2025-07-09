@@ -67,12 +67,13 @@ TITLE = r"""
        dMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMs    | |   | | |  __/ (__| | |_) | | || (_| | |_| | (_) | | | |
        dMMMMMMMMMMMMMMMMMMMNhysshmMMMMMMMMMMMMMMMMMMMs    |_|___|_|_ \___|\___|_| .__/|_|\__\__,_|\__|_|\___/|_| |_|
        dMMMNyyMMMMMMyymMMMh+      hMMMNyyMMMMMMhymMMMs     |__   __|        | | | |
-       dMMMm  MMMMMM  dMMN         NMMN  NMMMMM+ dMMMs        | | ___   ___ | | |_|
-       dMMMm  MMMMMM+ dMMm         mMMN  NMMMMM+ dMMMs        | |/ _ \ / _ \| |        -Written by:
-     +dMMMMm++MMMMMMddNMMm         mMMMddMMMMMMo+dMMMNh       | | (_) | (_) | |         Jason C. Deters,
-     hMMMMMMNNMMMMMMMMMMMm         mMMMMMMMMMMMNNNMMMMMo      |_|\___/ \___/|_|         U.S. Army Corps of Engineers
-     hMMMMMMMMMMMMMMMMMMMNhhhhhhhhhNMMMMMMMMMMMMMMMMMMMo
-     ymmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm+
+       dMMMm  MMMMMM  dMMN         NMMN  NMMMMM+ dMMMs        | | ___   ___ | | |_|   Concept by: Jason C. Deters
+       dMMMm  MMMMMM+ dMMm         mMMN  NMMMMM+ dMMMs        | |/ _ \ / _ \| |       Developed by: Christopher E. 
+     +dMMMMm++MMMMMMddNMMm         mMMMddMMMMMMo+dMMMNh       | | (_) | (_) | |       French, Stephen W. Brown,
+     hMMMMMMNNMMMMMMMMMMMm         mMMMMMMMMMMMNNNMMMMMo      |_|\___/ \___/|_|       Chase O. Hamilton, Joseph L. 
+     hMMMMMMMMMMMMMMMMMMMNhhhhhhhhhNMMMMMMMMMMMMMMMMMMMo                              Gutenson, and Jason C. Deters
+     ymmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm+                              
+
 """
 
 
