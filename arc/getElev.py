@@ -32,8 +32,6 @@
 ##  ------------------------------- ##
 ##          check_usa.py            ##
 ##  ------------------------------- ##
-##     Copyright: Jason Deters      ##
-##                                  ##
 ##    Written by: Jason Deters      ##
 ##     Edited by: Chase Hamilton    ##
 ##     Edited by: Chris French      ##
