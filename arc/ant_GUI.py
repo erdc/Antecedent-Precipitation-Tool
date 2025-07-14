@@ -1779,28 +1779,37 @@ class AntGUI(object):
                                     del merger
                                     # Remember to delete these partial files later
                                     parts_2_delete.append(final_path_variable_part)
-                            # Create all_items list for CSV writing
-                            all_items = current_input_list + [
-                                palmer_value,
-                                palmer_class,
-                                wet_dry_season,
-                                condition,
-                                ante_score,
-                            ]
+                            # Create item_dict list for CSV writing
+                            item_dict = {
+                                "lat": current_input_list[1],
+                                "lon": current_input_list[2],
+                                "year": current_input_list[3],
+                                "month": current_input_list[4],
+                                "day": current_input_list[5],
+                                "PDSI_value": palmer_value,
+                                "PDSI_class": palmer_class,
+                                "wet_dry_season": wet_dry_season,
+                                "ante_score": ante_score,
+                                "condition": condition,
+                            }
+                            self.L.Wrap(item_dict)
                             if watershed_scale == "Single Point":
                                 # Write results to CSV
+                                # "Lat,Long,Date,PDSI,PDSI,Season,Score,Condition"
                                 csv_writer.Wrap(
                                     "{},{},{}-{}-{},{},{},{},{},{}".format(
-                                        current_input_list[1],  # Latitude
-                                        current_input_list[2],  # Longitude
-                                        all_items[3],  # Observation Year
-                                        all_items[4],  # Observation Month
-                                        all_items[5],  # Observation Day
-                                        all_items[10],  # PDSI Value
-                                        all_items[11],  # PDSI Class
-                                        all_items[12],  # Season
-                                        all_items[14],  # Antecedent Precip Score
-                                        all_items[13],
+                                        item_dict["lat"],  # Latitude
+                                        item_dict["lon"],  # Longitude
+                                        item_dict["year"],  # Observation Year
+                                        item_dict["month"],  # Observation Month
+                                        item_dict["day"],  # Observation Day
+                                        item_dict["PDSI_value"],  # PDSI Value
+                                        item_dict["PDSI_class"],  # PDSI Class
+                                        item_dict["wet_dry_season"],  # Season
+                                        item_dict[
+                                            "ante_score"
+                                        ],  # Antecedent Precip Score
+                                        item_dict["condition"],  # Antecedent Condition
                                     )
                                 )  # Antecedent Precip Condition
                             else:
@@ -1814,16 +1823,18 @@ class AntGUI(object):
                                 )
                                 csv_writer.Wrap(
                                     "{},{},{}-{}-{},{},{},{},{},{}".format(
-                                        current_input_list[1],  # Latitude
-                                        current_input_list[2],  # Longitude
-                                        all_items[3],  # Observation Year
-                                        all_items[4],  # Observation Month
-                                        all_items[5],  # Observation Day
-                                        all_items[10],  # PDSI Value
-                                        all_items[11],  # PDSI Class
-                                        all_items[12],  # Season
-                                        all_items[14],  # Antecedent Precip Score
-                                        all_items[13],
+                                        item_dict["lat"],  # Latitude
+                                        item_dict["lon"],  # Longitude
+                                        item_dict["year"],  # Observation Year
+                                        item_dict["month"],  # Observation Month
+                                        item_dict["day"],  # Observation Day
+                                        item_dict["PDSI_value"],  # PDSI Value
+                                        item_dict["PDSI_class"],  # PDSI Class
+                                        item_dict["wet_dry_season"],  # Season
+                                        item_dict[
+                                            "ante_score"
+                                        ],  # Antecedent Precip Score
+                                        item_dict["condition"],  # Antecedent Condition
                                     )
                                 )  # Antecedent Precip Condition
                         else:
@@ -1837,9 +1848,9 @@ class AntGUI(object):
                     if self.flow_norm_analysis:
                         self.L.print_section("CALCULATING LOCAL STREAMFLOW NORM")
                         local_norm(
-                            float(current_input_list[1]),
-                            float(current_input_list[2]),
-                            f"{all_items[3]}-{all_items[4]}-{all_items[5]}",
+                            float(item_dict["lat"]),
+                            float(item_dict["lon"]),
+                            f"{item_dict['year']}-{item_dict['month']}-{item_dict['day']}",
                             str(output_folder),
                         )
                         self.L.Wrap(f"Saved to {output_folder}")
