@@ -37,73 +37,82 @@
 ##    Last Edited on: 2025-04-23    ##
 ##  ------------------------------- ##
 ######################################
+try:
+    import logging
+    import multiprocessing
+    import traceback
 
-import logging
-import multiprocessing
-import traceback
+    import arc
 
-import arc
+    multiprocessing.freeze_support()
 
-multiprocessing.freeze_support()
+    # Special setup logger
+    if __name__ == "__main__":
+        arc.utils.setup_logger()
 
-# Special setup logger
-if __name__ == "__main__":
-    arc.utils.setup_logger()
+    logger = logging.getLogger(__name__)
+    logger.debug(f"program starting")
 
-logger = logging.getLogger(__name__)
-logger.debug(f"program starting")
+    TITLE = r"""
+        ++++  +++  ++++                     +++  ++++  +++                     _                    _            _
+        hNNN +NNNy hNNm                    yNNN+ mNNd oNNN+        /\         | |                  | |          | |
+        hMMMhhMMMmymMMN                    hMMMhyNMMmyhMMM+       /  \   _ __ | |_ ___  ___ ___  __| | ___ _ __ | |_
+        sNMMMMMMMMMMMMd   syyo syyy  yyys  sNMMMMMMMMMMMMm       / /\ \ | '_ \| __/ _ \/ __/ _ \/ _` |/ _ \ '_ \| __|
+        +mMMMMMMMMMMs    NMMh mMMMo+MMMN   +dMMMMMMMMMMh       / ____ \| | | | ||  __/ (_|  __/ (_| |  __/ | | | |_
+        dMMMm++MMMM+    NMMNNMMMMNNMMMN    yMMMMo+dMMMs     _/_/_   \_\_| |_|\__\___|\___\___|\__,_|\___|_| |_|\__|
+        dMMMm  MMMM+    yNMMMMMMMMMMMmy    yMMMM+ dMMMs    |  __ \             (_)     (_) |      | | (_)
+        dMMMm  MMMM+     sMMMMMMMMMMm+     yMMMM+ dMMMs    | |__) | __ ___  ___ _ _ __  _| |_ __ _| |_ _  ___  _ __
+        dMMMmooMMMMyyyyyyhMMMMMMMMMMmyyyyyydMMMMsodMMMs    |  ___/ '__/ _ \/ __| | '_ \| | __/ _` | __| |/ _ \| '_ \
+        dMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMs    | |   | | |  __/ (__| | |_) | | || (_| | |_| | (_) | | | |
+        dMMMMMMMMMMMMMMMMMMMNhysshmMMMMMMMMMMMMMMMMMMMs    |_|___|_|_ \___|\___|_| .__/|_|\__\__,_|\__|_|\___/|_| |_|
+        dMMMNyyMMMMMMyymMMMh+      hMMMNyyMMMMMMhymMMMs     |__   __|        | | | |
+        dMMMm  MMMMMM  dMMN         NMMN  NMMMMM+ dMMMs        | | ___   ___ | | |_|   Concept by: Jason C. Deters
+        dMMMm  MMMMMM+ dMMm         mMMN  NMMMMM+ dMMMs        | |/ _ \ / _ \| |       Developed by: Christopher E. 
+        +dMMMMm++MMMMMMddNMMm         mMMMddMMMMMMo+dMMMNh       | | (_) | (_) | |       French, Stephen W. Brown,
+        hMMMMMMNNMMMMMMMMMMMm         mMMMMMMMMMMMNNNMMMMMo      |_|\___/ \___/|_|       Chase O. Hamilton, Joseph L. 
+        hMMMMMMMMMMMMMMMMMMMNhhhhhhhhhNMMMMMMMMMMMMMMMMMMMo                              Gutenson, and Jason C. Deters
+        ymmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm+                              
 
+    """
 
-TITLE = r"""
-     ++++  +++  ++++                     +++  ++++  +++                     _                    _            _
-     hNNN +NNNy hNNm                    yNNN+ mNNd oNNN+        /\         | |                  | |          | |
-     hMMMhhMMMmymMMN                    hMMMhyNMMmyhMMM+       /  \   _ __ | |_ ___  ___ ___  __| | ___ _ __ | |_
-     sNMMMMMMMMMMMMd   syyo syyy  yyys  sNMMMMMMMMMMMMm       / /\ \ | '_ \| __/ _ \/ __/ _ \/ _` |/ _ \ '_ \| __|
-      +mMMMMMMMMMMs    NMMh mMMMo+MMMN   +dMMMMMMMMMMh       / ____ \| | | | ||  __/ (_|  __/ (_| |  __/ | | | |_
-       dMMMm++MMMM+    NMMNNMMMMNNMMMN    yMMMMo+dMMMs     _/_/_   \_\_| |_|\__\___|\___\___|\__,_|\___|_| |_|\__|
-       dMMMm  MMMM+    yNMMMMMMMMMMMmy    yMMMM+ dMMMs    |  __ \             (_)     (_) |      | | (_)
-       dMMMm  MMMM+     sMMMMMMMMMMm+     yMMMM+ dMMMs    | |__) | __ ___  ___ _ _ __  _| |_ __ _| |_ _  ___  _ __
-       dMMMmooMMMMyyyyyyhMMMMMMMMMMmyyyyyydMMMMsodMMMs    |  ___/ '__/ _ \/ __| | '_ \| | __/ _` | __| |/ _ \| '_ \
-       dMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMs    | |   | | |  __/ (__| | |_) | | || (_| | |_| | (_) | | | |
-       dMMMMMMMMMMMMMMMMMMMNhysshmMMMMMMMMMMMMMMMMMMMs    |_|___|_|_ \___|\___|_| .__/|_|\__\__,_|\__|_|\___/|_| |_|
-       dMMMNyyMMMMMMyymMMMh+      hMMMNyyMMMMMMhymMMMs     |__   __|        | | | |
-       dMMMm  MMMMMM  dMMN         NMMN  NMMMMM+ dMMMs        | | ___   ___ | | |_|   Concept by: Jason C. Deters
-       dMMMm  MMMMMM+ dMMm         mMMN  NMMMMM+ dMMMs        | |/ _ \ / _ \| |       Developed by: Christopher E. 
-     +dMMMMm++MMMMMMddNMMm         mMMMddMMMMMMo+dMMMNh       | | (_) | (_) | |       French, Stephen W. Brown,
-     hMMMMMMNNMMMMMMMMMMMm         mMMMMMMMMMMMNNNMMMMMo      |_|\___/ \___/|_|       Chase O. Hamilton, Joseph L. 
-     hMMMMMMMMMMMMMMMMMMMNhhhhhhhhhNMMMMMMMMMMMMMMMMMMMo                              Gutenson, and Jason C. Deters
-     ymmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm+                              
+    def ula_window():
+        # Launch ULA
+        APP = arc.ula_window.UlaWindow()
+        APP.run()
 
-"""
+    def main():
+        print(TITLE)
+        # Launch GUI
+        APP = arc.ant_GUI.AntGUI()
+        APP.run()
 
-
-def ula_window():
-    # Launch ULA
-    APP = arc.ula_window.UlaWindow()
-    APP.run()
-
-
-def main():
-    print(TITLE)
-    # Launch GUI
-    APP = arc.ant_GUI.AntGUI()
-    APP.run()
-
-
-if __name__ == "__main__":
+    if __name__ == "__main__":
+        try:
+            # Setup
+            arc.get_all.ensure_wbd_folder()
+            arc.get_all.ensure_us_shp_folder()
+            arc.get_all.ensure_climdiv_folder()
+            # Run graphics
+            ula_window()
+            main()
+        except Exception as e:
+            error_message = (
+                f"Error: {str(e)}\nDetailed Error:\n{traceback.format_exc()}"
+            )
+            logger.error(
+                "The APT experienced a fatal error, please restart or contact 'APT-Report-Issue@usace.army.mil'"
+            )
+            logger.error(error_message)
+            logger.error("Press any key to close...")
+            input()
+except Exception as e:
+    error_message = f"Error: {str(e)}\n"
     try:
-        # Setup
-        arc.get_all.ensure_wbd_folder()
-        arc.get_all.ensure_us_shp_folder()
-        arc.get_all.ensure_climdiv_folder()
-        # Run graphics
-        ula_window()
-        main()
-    except Exception as e:
-        error_message = f"Error: {str(e)}\nDetailed Error:\n{traceback.format_exc()}"
-        logger.error(
-            "The APT experienced a fatal error, please restart or contact 'APT-Report-Issue@usace.army.mil'"
-        )
-        logger.error(error_message)
-        logger.error("Press any key to close...")
-        input()
+        import traceback
+
+        error_message += f"Detailed Error:\n{traceback.format_exc()}"
+    except:
+        pass
+    print(error_message)
+    print("Press any key to close")
+    input()
