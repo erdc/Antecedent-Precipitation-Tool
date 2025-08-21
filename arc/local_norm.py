@@ -91,7 +91,7 @@ default = {
         "REF_GAGES_ONLY": 0,
         "ENABLE_NWM_CALC": 1,
         "ENABLE_USGS_CALC": 1,
-        "NWM_TIMEOUT_MINS": 60,
+        "NWM_TIMEOUT_MINS": 10,
         "MTF_CONVERSION_FAC": 35.3147,
     },
     "version": {"VERSION": "v3"},
@@ -663,7 +663,8 @@ def download_nwm_subprocess(comid_list, nwm_uri, data_dir="data"):
         return 0
 
     # open the dataset
-    ds = xr.open_zarr(fsspec.get_mapper(nwm_uri, anon=True))
+    fs = fsspec.get_mapper(nwm_uri, anon=True, use_ssl=False)
+    ds = xr.open_zarr(fs)
 
     # filter down to POR and local comids streamflow
     ds_filtered = ds.sel(feature_id=comid_list, time=slice("1990-01-01", "2020-12-31"))
