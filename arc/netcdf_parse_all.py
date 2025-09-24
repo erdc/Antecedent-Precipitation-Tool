@@ -187,7 +187,7 @@ def check_thredds_status():
         if datetime.now() - RECENT_CHECK[0] < timedelta(minutes=5):
             return RECENT_CHECK[1]
 
-    url = "https://www.ncei.noaa.gov/thredds/serverInfo.html"
+    url = "https://www.ncei.noaa.gov/"
 
     try:
         response = requests.get(url, allow_redirects=True, stream=True)

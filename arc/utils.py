@@ -43,11 +43,31 @@
 import configparser
 import glob
 import logging
+import multiprocessing
 import os
 import pkgutil
+from functools import wraps
 from logging.handlers import TimedRotatingFileHandler
 
 logger = logging.getLogger(__name__)
+
+
+def synchronized(lock_name):
+    """Decorator to synchronize access to critical sections"""
+    lock = multiprocessing.Lock()
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            lock.acquire()
+            try:
+                return func(*args, **kwargs)
+            finally:
+                lock.release()
+
+        return wrapper
+
+    return decorator
 
 
 def find_file_or_dir(search_dir, pattern, num_searches=2):
@@ -65,6 +85,7 @@ def find_file_or_dir(search_dir, pattern, num_searches=2):
     )
 
 
+@synchronized("config_lock")
 def ini_config(default, data_dir="data"):
     # find file
     try:
@@ -74,25 +95,38 @@ def ini_config(default, data_dir="data"):
         os.makedirs(data_dir, exist_ok=True)
     config_path = os.path.join(data_dir, "config.ini")
     config = configparser.ConfigParser()
-    if not os.path.exists(config_path):
-        # create a new one with the default values
-        for section, options in default.items():
-            config[section] = options
-        with open(config_path, "w") as configfile:
-            config.write(configfile)
-    else:
-        # if found, load it
-        config.read(config_path)
-        # if the default do not exist add them
-        for section, options in default.items():
-            if not config.has_section(section):
-                config.add_section(section)
-            for option, value in options.items():
-                if not config.has_option(section, option):
-                    config.set(section, option, str(value))
-        # save the updated config file
-        with open(config_path, "w") as configfile:
-            config.write(configfile)
+
+    try:
+        if os.path.exists(config_path):
+            # if found, load it
+            config.read(config_path)
+            # if the default do not exist add them
+            for section, options in default.items():
+                if not config.has_section(section):
+                    config.add_section(section)
+                for option, value in options.items():
+                    if not config.has_option(section, option):
+                        config.set(section, option, str(value))
+            # save the updated config file
+            with open(config_path, "w") as configfile:
+                config.write(configfile)
+        return config
+    except Exception as e:
+        error_message = f"Config file is corrupt: {str(e)}\n"
+        try:
+            import traceback
+
+            error_message += f"Detailed Error:\n{traceback.format_exc()}"
+        except:
+            pass
+        logger.warning(error_message)
+
+    # create a new one with the default values
+    logger.warning("Writing a fresh config with default values")
+    for section, options in default.items():
+        config[section] = options
+    with open(config_path, "w") as configfile:
+        config.write(configfile)
     return config
 
 

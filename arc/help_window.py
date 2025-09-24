@@ -36,7 +36,7 @@
 ##      Edited by: Joseph Gutenson  ##
 ##      Edited by: Chris French     ##
 ##  ------------------------------- ##
-##    Last Edited on:  2025-07-09   ##
+##    Last Edited on:  2025-07-29   ##
 ##  ------------------------------- ##
 ######################################
 
@@ -51,12 +51,8 @@ from tkinter import ttk
 
 # Custom Libraries
 try:
-    from . import get_files
     from .utilities import JLog
 except Exception:
-    #  Maintains compatibility with previous non-compiled versions
-    import get_files
-
     # Reverse compatibility step - Add utilities folder to path directly
     MODULE_PATH = os.path.dirname(os.path.realpath(__file__))
     ROOT = os.path.dirname(MODULE_PATH)
