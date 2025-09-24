@@ -507,19 +507,19 @@ def local_norm_usgs(lat, lon, date, save_path=None):
                 point = kml.newpoint(
                     name=gage_id, coords=[loc_tuple], description=description
                 )
-                if perc > 80.0:
+                if perc > 90.0:
                     point.style.iconstyle.icon.href = (
                         "http://maps.google.com/mapfiles/kml/paddle/blu-blank.png"
                     )
-                elif perc > 60.0:
+                elif perc > 75.0:
                     point.style.iconstyle.icon.href = (
                         "http://maps.google.com/mapfiles/kml/paddle/ltblu-blank.png"
                     )
-                elif perc > 40.0:
+                elif perc >= 25.0:
                     point.style.iconstyle.icon.href = (
                         "http://maps.google.com/mapfiles/kml/paddle/grn-blank.png"
                     )
-                elif perc > 20.0:
+                elif perc >= 10.0:
                     point.style.iconstyle.icon.href = (
                         "http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png"
                     )
@@ -971,19 +971,19 @@ def local_norm_nwm(lat, lon, date, save_path=None):
         point = kml.newpoint(
             name=str(column), coords=[loc_tuple], description=description
         )
-        if perc > 80.0:
+        if perc > 90.0:
             point.style.iconstyle.icon.href = (
                 "http://maps.google.com/mapfiles/kml/paddle/blu-blank.png"
             )
-        elif perc > 60.0:
+        elif perc > 75.0:
             point.style.iconstyle.icon.href = (
                 "http://maps.google.com/mapfiles/kml/paddle/ltblu-blank.png"
             )
-        elif perc > 40.0:
+        elif perc >= 25.0:
             point.style.iconstyle.icon.href = (
                 "http://maps.google.com/mapfiles/kml/paddle/grn-blank.png"
             )
-        elif perc > 20.0:
+        elif perc >= 10.0:
             point.style.iconstyle.icon.href = (
                 "http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png"
             )
