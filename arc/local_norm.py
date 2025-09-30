@@ -91,7 +91,7 @@ default = {
         "REF_GAGES_ONLY": 0,
         "ENABLE_NWM_CALC": 1,
         "ENABLE_USGS_CALC": 1,
-        "NWM_TIMEOUT_MINS": 10,
+        "NWM_TIMEOUT_MINS": 30,
         "MTF_CONVERSION_FAC": 35.3147,
     },
     "version": {"VERSION": "v3"},
