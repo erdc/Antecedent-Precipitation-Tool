@@ -1,0 +1,18 @@
+{
+  "base_urls": {
+    "noaa_cirs_climdiv": "https://www1.ncdc.noaa.gov/pub/data/cirs/climdiv",
+    "ghcn_daily": "https://www.ncei.noaa.gov/pub/data/ghcn/daily",
+    "ghcn_stations": "https://www.ncei.noaa.gov/pub/data/ghcn/daily/ghcnd-stations.txt",
+    "nclimgrid_daily": "https://www.ncei.noaa.gov/thredds/dodsC/nclimgrid-daily",
+    "usgs_epqs": "https://epqs.nationalmap.gov/v1/json",
+    "opentopo_elevation": "https://api.opentopodata.org/v1/ned10m",
+    "open_elevation": "https://api.open-elevation.com/api/v1/lookup",
+    "usgs_nwis_dv": "https://waterservices.usgs.gov/nwis/dv",
+    "usgs_nwis_site": "https://waterservices.usgs.gov/nwis/site",
+    "nwm_analysis_assim": "https://storage.googleapis.com/national-water-model",
+    "nwm_retro_conus": "s3://noaa-nwm-retrospective-3-0-pds/CONUS/zarr/chrtout.zarr",
+    "nwm_retro_ak": "s3://noaa-nwm-retrospective-3-0-pds/Alaska/zarr/chrtout.zarr",
+    "nwm_retro_hi": "s3://noaa-nwm-retrospective-3-0-pds/Hawaii/zarr/chrtout.zarr",
+    "nwm_retro_pr": "s3://noaa-nwm-retrospective-3-0-pds/PR/zarr/chrtout.zarr"
+  }
+}
