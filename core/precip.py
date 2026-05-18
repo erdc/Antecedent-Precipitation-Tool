@@ -4,9 +4,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 
-from core.precip_downloader import (
-    build_composite_precip_series,
-)
+from core.precip_downloader import build_composite_precip_series
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +87,7 @@ def compute_rolling_precip_analysis(
 
     rolling_30day = final_df.rolling(window=30, min_periods=1).sum()
 
-    # Water year window for graphing
+    # Water year window for graphing (kept broad for context)
     wy_start = (
         datetime(analysis_date.year, 10, 1)
         if analysis_date.month >= 10
@@ -98,25 +96,32 @@ def compute_rolling_precip_analysis(
     graph_start = wy_start - timedelta(days=365)
     graph_end = wy_start + timedelta(days=364)
 
-    # Period for computing normals
+    # === NORMALS: Full ~30-year historical period (unchanged) ===
     norm_start = datetime(analysis_date.year - 31, 10, 1)
     norm_end = datetime(analysis_date.year - 1, 9, 30)
 
-    stats_rolling = rolling_30day[norm_start:norm_end]
+    stats_rolling = rolling_30day[norm_start:norm_end].dropna()
 
     all_days_array = value_list_to_water_year_table(stats_rolling.index, stats_rolling)
     normal_low, normal_high = calc_normal_values(
         pd.date_range(graph_start, graph_end), all_days_array
     )
 
+    # === CHARTING WINDOW: Only ~93 days before + buffer after analysis_date ===
+    chart_start = analysis_date - timedelta(days=93)
+    # Small buffer after for smooth rolling window at the end
+    chart_end = analysis_date + timedelta(days=15)
+
     return {
-        "daily_precip": final_df,
-        "rolling_total": rolling_30day,
+        "daily_precip": final_df[chart_start:chart_end],  # limited for plotting
+        "rolling_total": rolling_30day[chart_start:chart_end],  # limited for plotting
         "normal_low": normal_low,
         "normal_high": normal_high,
-        "graph_start": graph_start,
-        "graph_end": graph_end,
+        "graph_start": chart_start,  # now the short window
+        "graph_end": chart_end,
         "obs_date": analysis_date,
+        "_full_daily_precip": final_df,
+        "_full_rolling_total": rolling_30day,
     }
 
 
@@ -130,19 +135,21 @@ def run_full_precip_analysis(
 ) -> dict:
     """
     Complete precipitation analysis pipeline.
-    Returns rich dict ready for storage/plotting.
+    - Pulls full ~30+ years for normals (via downloader)
+    - Charts only ~93 days before + buffer
     """
     logger.info(
         f"Starting precip analysis for {lat:.4f}, {lon:.4f} on {analysis_date.date()}"
     )
 
-    start_date = analysis_date - timedelta(days=365 * 32)
+    # === Full historical fetch for normals (matches original main behavior) ===
+    fetch_start = analysis_date - timedelta(days=365 * 32)
 
     precip_series, stations_info, elevation = build_composite_precip_series(
         lat=lat,
         lon=lon,
-        start_date=start_date,
-        end_date=analysis_date,
+        start_date=fetch_start,
+        end_date=analysis_date,  # no future data
         use_gridded=use_gridded,
     )
 
@@ -162,7 +169,7 @@ def run_full_precip_analysis(
     result = {
         "analyzed_data": True,
         "data_source": "Gridded" if use_gridded else "GHCN",
-        "precip_data": analysis["daily_precip"],  # kept for backward compatibility
+        "precip_data": analysis["daily_precip"],  # short window for plotting
         **analysis,
         "elevation": float(elevation),
         "local_stations_info": stations_info,
@@ -170,6 +177,8 @@ def run_full_precip_analysis(
         "lon": lon,
         "output_dir": output_dir,
         "data_dir": data_dir,
+        "fetch_start": fetch_start,
+        "fetch_end": analysis_date,
     }
 
     logger.info(f"Precip analysis completed successfully for {analysis_date.date()}")
@@ -177,13 +186,9 @@ def run_full_precip_analysis(
 
 
 if __name__ == "__main__":
+    # Quick test
     end_date = datetime.strptime("2023-11-11", "%Y-%m-%d")
-    start_date = end_date - timedelta(days=365)
-
-    series, info = build_composite_precip_series_gridded(
-        lat=30.0, lon=-90.0, start_date=start_date, end_date=end_date
+    series, info, elev = build_composite_precip_series(
+        30.0, -90.0, end_date - timedelta(days=365 * 5), end_date
     )
-
-    print(f"Extracted {len(series)} days")
-    print(series.head())
-    print(series.tail())
+    print(f"Extracted {len(series)} days for testing")

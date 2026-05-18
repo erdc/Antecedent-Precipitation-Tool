@@ -157,12 +157,16 @@ def get_ghcn_timeseries_data(
                 best = huge_record
 
         if best is None:
-            # Fallback: any station with data
-            for st in sorted(
-                stations_with_data, key=lambda x: x.get("weighted_diff", 10000)
-            ):
-                if st.get("data") is not None and not st["data"].empty:
-                    return st
+            # Fallback: any station with data, sorted by weighted diff
+            candidates = [
+                s
+                for s in stations_with_data
+                if s.get("data") is not None and not s["data"].empty
+            ]
+            if candidates:
+                return sorted(candidates, key=lambda x: x.get("weighted_diff", 10000))[
+                    0
+                ]
             return stations_with_data[0] if stations_with_data else None
 
         return best
@@ -212,7 +216,9 @@ def get_ghcn_timeseries_data(
         series = _fetch_station_data(st["id"])
         st["data"] = series
         if series is not None and not series.empty:
-            st["actual_rows"] = series.loc[norm_start:norm_end].notna().sum()
+            st["actual_rows"] = (
+                series.loc[norm_start:norm_end].notna().sum()
+            )  # full normal period
             st["antecedent_rows"] = series.loc[ante_start:ante_end].notna().sum()
         else:
             st["actual_rows"] = 0
@@ -242,7 +248,7 @@ def get_ghcn_timeseries_data(
         other_stations, key=lambda x: x["weighted_diff"]
     )
 
-    # Build composite
+    # === COMPOSITE + STATION INFO ===
     date_range = pd.date_range(start=start_date, end=end_date, freq="D")
     composite = pd.Series(index=date_range, dtype="float64")
     final_used = []
@@ -250,20 +256,36 @@ def get_ghcn_timeseries_data(
     for i, st in enumerate(sorted_stations):
         if composite.isna().sum() == 0:
             break
+
         data = st.get("data")
         if data is not None and not data.empty:
             before = composite.isna().sum()
-            composite = composite.fillna(data)
+            # Use the station's data to fill gaps (original style)
+            composite = composite.fillna(data.reindex(date_range))
             filled = before - composite.isna().sum()
-            if filled > 0 or i == 0:
-                st_info = {k: v for k, v in st.items() if k != "data"}
+
+            if filled > 0 or i == 0:  # always include primary
+                st_info = {
+                    k: v
+                    for k, v in st.items()
+                    if k not in ["data", "actual_rows", "antecedent_rows"]
+                }
+
+                # Better match to old "Days Normal" / "Days Antecedent"
                 st_info.update(
-                    {"days_normal": int(filled), "days_antecedent": int(filled)}
+                    {
+                        "days_normal": int(
+                            st.get("actual_rows", 0)
+                        ),  # true historical coverage
+                        "days_antecedent": int(st.get("antecedent_rows", 0)),
+                    }
                 )
                 final_used.append(st_info)
 
-    composite = composite.interpolate(method="time").fillna(0)
+    # Final cleanup
+    composite = composite.interpolate(method="time", limit_direction="both").fillna(0.0)
 
+    logger.info(f"Composite built using {len(final_used)} stations")
     return composite, final_used, target_elev_ft or -1.0
 
 
