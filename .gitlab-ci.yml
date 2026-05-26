@@ -2,30 +2,53 @@ stages:
   - test
   - build
 
-# 1. Native Windows SAST Job using Bandit
 python_sast_windows:
   stage: test
   script:
     - Write-Host "Installing Bandit SAST Analyzer..."
     - pip install bandit
     - Write-Host "Running SAST scan on Python files..."
-    # Scans the current directory (-r). Shows Medium/High severity findings.
     - bandit -r . -ll -ii
-  # Set to true so the pipeline continues to the build stage even if minor vulnerabilities are found
   allow_failure: true
 
-# 2. Windows Conda & PyInstaller Build
 pyinstaller_build:
   stage: build
   variables:
     CONDA_ENV_NAME: "apt-v3-1"
   script:
+    - Write-Host "Locating Conda installation..."
+    # 1. Check if 'conda' is already available, otherwise check common installation paths
+    - |
+      $CondaExe = (Get-Command conda -ErrorAction SilentlyContinue).Source
+      if (-not $CondaExe) {
+          $StandardPaths = @(
+              "$env:USERPROFILE\miniconda3\condabin\conda.bat",
+              "$env:USERPROFILE\anaconda3\condabin\conda.bat",
+              "C:\ProgramData\miniconda3\condabin\conda.bat",
+              "C:\ProgramData\anaconda3\condabin\conda.bat"
+          )
+          foreach ($Path in $StandardPaths) {
+              if (Test-Path $Path) {
+                  $CondaExe = $Path
+                  break
+              }
+          }
+      }
+    - |
+      if (-not $CondaExe) {
+          Write-Error "Conda was not found on this machine. Ensure Miniconda or Anaconda is installed."
+          exit 1
+      } else {
+          Write-Host "Conda located at: $CondaExe"
+      }
+
+    # 2. Build the environment using the located executable
     - Write-Host "Building Conda Environment..."
-    - conda env create -f environment.yml --name $env:CONDA_ENV_NAME --force
+    - & $CondaExe env create -f environment.yml --name $env:CONDA_ENV_NAME --force
     
+    # 3. Execute PyInstaller
     - Write-Host "Executing PyInstaller within Conda Environment..."
-    # 'conda run' safely executes the command inside the environment without needing 'conda activate'
-    - conda run -n $env:CONDA_ENV_NAME pyinstaller main_ex.spec --noconfirm
+    - & $CondaExe run -n $env:CONDA_ENV_NAME pyinstaller main_ex.spec --noconfirm
   artifacts:
     paths:
       - dist/
