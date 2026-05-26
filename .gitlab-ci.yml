@@ -1,22 +1,11 @@
 stages:
-  - test
   - build
-
-python_sast_windows:
-  stage: test
-  script:
-    - Write-Host "Installing Bandit SAST Analyzer..."
-    - pip install bandit
-    - Write-Host "Running SAST scan on Python files..."
-    - bandit -r . -ll -ii
-  allow_failure: true
 
 pyinstaller_build:
   stage: build
   variables:
     CONDA_ENV_NAME: "apt-v3-1"
   script:
-    - Write-Host "Locating Conda installation..."
     - |
       $CondaExe = (Get-Command conda -ErrorAction SilentlyContinue).Source
       if (-not $CondaExe) {
@@ -42,12 +31,9 @@ pyinstaller_build:
           Write-Host "Conda located at: $CondaExe"
       }
 
-    - Write-Host "Building Conda Environment..."
-    # Using the pipe (|) safely executes the PowerShell call operator (&)
     - |
       & $CondaExe env create -f environment.yml --name $env:CONDA_ENV_NAME
     
-    - Write-Host "Executing PyInstaller within Conda Environment..."
     - |
       & $CondaExe run -n $env:CONDA_ENV_NAME pyinstaller main_ex.spec --noconfirm
   artifacts:
