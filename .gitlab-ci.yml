@@ -21,6 +21,7 @@ pyinstaller_build:
       $CondaExe = (Get-Command conda -ErrorAction SilentlyContinue).Source
       if (-not $CondaExe) {
           $StandardPaths = @(
+              "$env:USERPROFILE\AppData\Local\miniconda3\condabin\conda.bat",
               "$env:USERPROFILE\miniconda3\condabin\conda.bat",
               "$env:USERPROFILE\anaconda3\condabin\conda.bat",
               "C:\ProgramData\miniconda3\condabin\conda.bat",
