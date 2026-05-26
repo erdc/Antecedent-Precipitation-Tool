@@ -17,7 +17,6 @@ pyinstaller_build:
     CONDA_ENV_NAME: "apt-v3-1"
   script:
     - Write-Host "Locating Conda installation..."
-    # 1. Check if 'conda' is already available, otherwise check common installation paths
     - |
       $CondaExe = (Get-Command conda -ErrorAction SilentlyContinue).Source
       if (-not $CondaExe) {
@@ -42,13 +41,14 @@ pyinstaller_build:
           Write-Host "Conda located at: $CondaExe"
       }
 
-    # 2. Build the environment using the located executable
     - Write-Host "Building Conda Environment..."
-    - & $CondaExe env create -f environment.yml --name $env:CONDA_ENV_NAME --force
+    # Using the pipe (|) safely executes the PowerShell call operator (&)
+    - |
+      & $CondaExe env create -f environment.yml --name $env:CONDA_ENV_NAME --force
     
-    # 3. Execute PyInstaller
     - Write-Host "Executing PyInstaller within Conda Environment..."
-    - & $CondaExe run -n $env:CONDA_ENV_NAME pyinstaller main_ex.spec --noconfirm
+    - |
+      & $CondaExe run -n $env:CONDA_ENV_NAME pyinstaller main_ex.spec --noconfirm
   artifacts:
     paths:
       - dist/
