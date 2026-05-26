@@ -32,7 +32,7 @@ pyinstaller_build:
       }
 
     - |
-      & $CondaExe env create -f environment.yml --name $env:CONDA_ENV_NAME
+      & $CondaExe env create -f apt_env_v3.yml --name $env:CONDA_ENV_NAME
     
     - |
       & $CondaExe run -n $env:CONDA_ENV_NAME pyinstaller main_ex.spec --noconfirm
