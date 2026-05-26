@@ -45,7 +45,7 @@ pyinstaller_build:
     - Write-Host "Building Conda Environment..."
     # Using the pipe (|) safely executes the PowerShell call operator (&)
     - |
-      & $CondaExe env create -f environment.yml --name $env:CONDA_ENV_NAME --force
+      & $CondaExe env create -f environment.yml --name $env:CONDA_ENV_NAME
     
     - Write-Host "Executing PyInstaller within Conda Environment..."
     - |
