@@ -15,7 +15,7 @@ pyinstaller_build:
     CONDA_ENV_NAME: "apt-v3-1"
   script:
     # 1. Initialize Conda for PowerShell/CMD if not already initialized
-    - conda env create -f environment.yml --name %CONDA_ENV_NAME% --force
+    - conda env create -f apt_env_v3.yml --name %CONDA_ENV_NAME% --force
     # 2. Activate the newly created environment
     - call conda activate %CONDA_ENV_NAME%
     # 3. Compile the program using the spec file
