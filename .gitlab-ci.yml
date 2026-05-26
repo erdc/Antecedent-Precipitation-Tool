@@ -32,10 +32,10 @@ pyinstaller_build:
       }
 
     - |
-      & $CondaExe env create -f apt_env_v3.yml --name $env:CONDA_ENV_NAME
+      & $CondaExe env update -f environment.yml --name $env:CONDA_ENV_NAME --prune
     
     - |
-      & $CondaExe run -n $env:CONDA_ENV_NAME pyinstaller main_ex.spec --noconfirm
+      & $CondaExe run --live-stream -n $env:CONDA_ENV_NAME pyinstaller main_ex.spec --noconfirm
   artifacts:
     paths:
       - dist/
