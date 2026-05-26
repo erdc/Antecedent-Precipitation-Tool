@@ -9,8 +9,6 @@ stages:
 
 pyinstaller_build:
   stage: build
-  tags:
-    - windows  # This tag directs the job to your Windows GitLab runner
   variables:
     CONDA_ENV_NAME: "apt-v3-1"
   script:
