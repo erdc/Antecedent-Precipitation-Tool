@@ -1,0 +1,28 @@
+include:
+  - template: Jobs/SAST.gitlab-ci.yml
+
+stages:
+  - test
+  - build
+
+# The default SAST job will still analyze the raw Python files during the test stage.
+
+pyinstaller_build:
+  stage: build
+  tags:
+    - windows  # This tag directs the job to your Windows GitLab runner
+  variables:
+    CONDA_ENV_NAME: "apt-v3-1"
+  script:
+    # 1. Initialize Conda for PowerShell/CMD if not already initialized
+    - conda env create -f environment.yml --name %CONDA_ENV_NAME% --force
+    # 2. Activate the newly created environment
+    - call conda activate %CONDA_ENV_NAME%
+    # 3. Compile the program using the spec file
+    - pyinstaller main_ex.spec --noconfirm
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
