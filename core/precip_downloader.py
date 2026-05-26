@@ -179,7 +179,6 @@ def get_ghcn_timeseries_data(
 
     target_elev_ft = get_elevation(lat, lon, "feet")
 
-    # Get candidate stations
     all_stations = _get_station_list().dropna(
         subset=["latitude", "longitude", "elevation"]
     )
@@ -202,7 +201,9 @@ def get_ghcn_timeseries_data(
             }
         )
 
-    local_stations = sorted(local_stations, key=lambda x: x["weighted_diff"])[:30]
+    local_stations = sorted(local_stations, key=lambda x: x["weighted_diff"])[
+        :40
+    ]  # increased a bit
 
     logger.info(f"Fetching data for {len(local_stations)} stations...")
 
@@ -216,10 +217,8 @@ def get_ghcn_timeseries_data(
         series = _fetch_station_data(st["id"])
         st["data"] = series
         if series is not None and not series.empty:
-            st["actual_rows"] = (
-                series.loc[norm_start:norm_end].notna().sum()
-            )  # full normal period
-            st["antecedent_rows"] = series.loc[ante_start:ante_end].notna().sum()
+            st["actual_rows"] = int(series.loc[norm_start:norm_end].notna().sum())
+            st["antecedent_rows"] = int(series.loc[ante_start:ante_end].notna().sum())
         else:
             st["actual_rows"] = 0
             st["antecedent_rows"] = 0
@@ -230,9 +229,7 @@ def get_ghcn_timeseries_data(
         logger.error("No usable primary station found.")
         return None, [], target_elev_ft or -1
 
-    logger.info(
-        f"Selected primary: {primary['id']} / {primary.get('name')} (wdiff={primary['weighted_diff']:.3f})"
-    )
+    logger.info(f"Selected primary: {primary['id']} / {primary.get('name')}")
 
     # Re-sort others relative to primary
     other_stations = [s for s in stations_with_data if s["id"] != primary["id"]]
@@ -241,14 +238,14 @@ def get_ghcn_timeseries_data(
             (primary["latitude"], primary["longitude"]),
             (st["latitude"], st["longitude"]),
         ).miles
-        elev_diff = abs((primary.get("elevation_ft", 0) - st.get("elevation_ft", 0)))
+        elev_diff = abs(primary.get("elevation_ft", 0) - st.get("elevation_ft", 0))
         st["weighted_diff"] = round(dist * ((elev_diff / 1000) + 0.45), 4)
 
     sorted_stations = [primary] + sorted(
         other_stations, key=lambda x: x["weighted_diff"]
     )
 
-    # === COMPOSITE + STATION INFO ===
+    # === COMPOSITE BUILDING ===
     date_range = pd.date_range(start=start_date, end=end_date, freq="D")
     composite = pd.Series(index=date_range, dtype="float64")
     final_used = []
@@ -256,36 +253,27 @@ def get_ghcn_timeseries_data(
     for i, st in enumerate(sorted_stations):
         if composite.isna().sum() == 0:
             break
-
         data = st.get("data")
         if data is not None and not data.empty:
             before = composite.isna().sum()
-            # Use the station's data to fill gaps (original style)
-            composite = composite.fillna(data.reindex(date_range))
+            # Reindex to ensure alignment
+            station_data = data.reindex(date_range)
+            composite = composite.fillna(station_data)
             filled = before - composite.isna().sum()
 
-            if filled > 0 or i == 0:  # always include primary
-                st_info = {
-                    k: v
-                    for k, v in st.items()
-                    if k not in ["data", "actual_rows", "antecedent_rows"]
-                }
-
-                # Better match to old "Days Normal" / "Days Antecedent"
+            if filled > 0 or i == 0:  # Always keep primary + any that contributed
+                st_info = {k: v for k, v in st.items() if k not in ["data"]}
                 st_info.update(
                     {
-                        "days_normal": int(
-                            st.get("actual_rows", 0)
-                        ),  # true historical coverage
-                        "days_antecedent": int(st.get("antecedent_rows", 0)),
+                        "days_normal": st.get("actual_rows", 0),  # Historical coverage
+                        "days_antecedent": st.get("antecedent_rows", 0),
                     }
                 )
                 final_used.append(st_info)
 
-    # Final cleanup
-    composite = composite.interpolate(method="time", limit_direction="both").fillna(0.0)
+    composite = composite.interpolate(method="time", limit_direction="both").fillna(0)
 
-    logger.info(f"Composite built using {len(final_used)} stations")
+    logger.info(f"Composite built with {len(final_used)} stations")
     return composite, final_used, target_elev_ft or -1.0
 
 
