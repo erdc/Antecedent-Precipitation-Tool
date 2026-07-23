@@ -548,9 +548,6 @@ def _plot_single_page(
     pdf.savefig(fig, facecolor=fig.get_facecolor())
     plt.close(fig)
 
-    pdf.savefig(fig, facecolor=fig.get_facecolor())
-    plt.close(fig)
-
 
 # ====================== BATCH MERGING ======================
 
