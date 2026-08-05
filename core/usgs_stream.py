@@ -59,6 +59,9 @@ def download_usgs_flow(gage_id: str, start_date: str, end_date: str) -> pd.DataF
         "parameterCd": "00060",
     }
 
+    # TODO: This try needs a simple wait and retry loop
+    #       currently it pings the servers too fast and
+    #       the usgs drop stuff
     try:
         resp = requests.get(url, params=params, timeout=20)
         resp.raise_for_status()
@@ -77,7 +80,8 @@ def download_usgs_flow(gage_id: str, start_date: str, end_date: str) -> pd.DataF
         return pd.DataFrame(data)
 
     except Exception as e:
-        logger.warning(f"Failed to download USGS data for {gage_id}: {e}")
+        # This message is common and a non issue so hiding it at debug level
+        logger.debug(f"Failed to download USGS data for {gage_id}: {e}")
         return pd.DataFrame()
 
 
@@ -85,7 +89,7 @@ def get_local_gages(
     lat: float, lon: float, date_str: str, data_dir: str, max_dist: int = 100
 ):
     """Find nearby USGS gages."""
-    shapefile_path = os.path.join(data_dir, "usa_shape", "tl_2023_us_state.shp")
+    shapefile_path = os.path.join(data_dir, "usa_shp", "tl_2023_us_state.shp")
     gage_data_path = os.path.join(data_dir, "gage_data.csv")
 
     region = get_special_region(lat, lon, shapefile_path)
@@ -110,7 +114,7 @@ def get_local_gages(
         axis=1,
     )
     df = df[df["dist"] <= max_dist].copy()
-    df = df.sort_values("dist").head(20)  # Top 20 closest
+    df = df.sort_values("dist").head(30)  # Top n closest
 
     return df.rename(
         columns={
@@ -156,9 +160,7 @@ def _get_region_gages(stusps: str, date_str: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def analyze_usgs_for_location(
-    lat: float, lon: float, analysis_date: str, data_dir: str = "data"
-):
+def analyze_usgs(lat: float, lon: float, analysis_date: str, data_dir: str = "data"):
     """Main function: Run full USGS analysis for a location and date."""
     logger.info(f"Analyzing USGS streamflow for ({lat}, {lon}) on {analysis_date}")
 
@@ -170,9 +172,8 @@ def analyze_usgs_for_location(
     results = []
     end_dt = pd.to_datetime(analysis_date)
 
-    for _, gage in gages.head(8).iterrows():  # Limit to top 8 gages
+    for _, gage in gages.iterrows():
         flow_df = download_usgs_flow(gage["gage_id"], "1950-01-01", analysis_date)
-
         if flow_df.empty:
             continue
 
@@ -180,21 +181,20 @@ def analyze_usgs_for_location(
         current_flow = flow_df[flow_df["time"] == end_dt]
         if current_flow.empty:
             continue
+
         current_flow = current_flow["discharge"].iloc[0]
 
         # Calculate percentile
         day_of_year = end_dt.strftime("%m-%d")
         same_day = flow_df[flow_df["time"].dt.strftime("%m-%d") == day_of_year]
-
         if len(same_day) < 5:  # Not enough historical data
             continue
 
         percentile = round((same_day["discharge"] <= current_flow).mean() * 100, 1)
-
         condition = (
-            "Wet / Above Normal"
+            "Wet/Above Normal"
             if percentile > 75
-            else "Normal" if percentile >= 25 else "Dry / Below Normal"
+            else "Normal" if percentile >= 25 else "Dry/Below Normal"
         )
 
         results.append(
@@ -207,6 +207,10 @@ def analyze_usgs_for_location(
                 "condition": condition,
             }
         )
+
+        # Stop iterating once we have found 10 gages with valid data
+        if len(results) >= 10:
+            break
 
     if not results:
         logger.warning("Could not compute valid flow percentiles.")
@@ -223,10 +227,15 @@ if __name__ == "__main__":
     import glob
 
     search_dir = os.path.abspath(os.path.join(__file__, "..", ".."))
-    result = next(glob.iglob(f"{search_dir}/**/usa_shape/", recursive=True), None)
+    result = next(glob.iglob(f"{search_dir}/**/usa_shp/", recursive=True), None)
+    if result is None:
+        raise FileNotFoundError(
+            f"Could not find 'usa_shp' directory under {search_dir}"
+        )
     result = os.path.abspath(os.path.join(result, ".."))
+    print(result)
 
-    df = analyze_usgs_for_location(
+    df = analyze_usgs(
         lat=30.0,
         lon=-90.0,
         analysis_date="2023-11-11",

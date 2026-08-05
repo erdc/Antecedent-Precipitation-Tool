@@ -8,8 +8,9 @@ class PrecipGUI:
         self.root = root
         self.dispatcher = dispatcher
         self.root.title("Precipitation Analysis Tool")
-        self.root.geometry("380x400")
+        self.root.geometry("420x480")
 
+        # ----- Location / Date -----
         tk.Label(root, text="Latitude:").grid(
             row=0, column=0, padx=10, pady=5, sticky="e"
         )
@@ -34,18 +35,36 @@ class PrecipGUI:
         self.end_date_label = tk.Label(root, text="End Date (YYYY-MM-DD):")
         self.end_date_entry = tk.Entry(root)
 
+        # ----- Analysis toggles -----
+        tk.Label(root, text="Analyses to run:", font=("", 9, "bold")).grid(
+            row=4, column=0, columnspan=2, padx=10, pady=(12, 2), sticky="w"
+        )
+
         self.gridded_var = tk.BooleanVar(value=False)
         self.chk_gridded = tk.Checkbutton(
-            root, text="Gridded", variable=self.gridded_var
+            root, text="Gridded (nClimGrid)", variable=self.gridded_var
         )
-        self.chk_gridded.grid(row=4, column=0, padx=10, pady=5, sticky="w")
+        self.chk_gridded.grid(row=5, column=0, padx=10, pady=2, sticky="w")
 
         self.ghcn_var = tk.BooleanVar(value=True)
         self.chk_ghcn = tk.Checkbutton(
             root, text="GHCN Station", variable=self.ghcn_var
         )
-        self.chk_ghcn.grid(row=4, column=1, padx=10, pady=5, sticky="w")
+        self.chk_ghcn.grid(row=5, column=1, padx=10, pady=2, sticky="w")
 
+        self.usgs_var = tk.BooleanVar(value=True)
+        self.chk_usgs = tk.Checkbutton(
+            root, text="USGS Streamflow", variable=self.usgs_var
+        )
+        self.chk_usgs.grid(row=6, column=0, padx=10, pady=2, sticky="w")
+
+        self.nwm_var = tk.BooleanVar(value=False)
+        self.chk_nwm = tk.Checkbutton(
+            root, text="NWM Streamflow", variable=self.nwm_var
+        )
+        self.chk_nwm.grid(row=6, column=1, padx=10, pady=2, sticky="w")
+
+        # ----- Batch mode -----
         self.batch_mode_var = tk.BooleanVar(value=False)
         self.chk_batch = tk.Checkbutton(
             root,
@@ -53,12 +72,13 @@ class PrecipGUI:
             variable=self.batch_mode_var,
             command=self.toggle_batch_mode,
         )
-        self.chk_batch.grid(row=6, column=0, columnspan=2, padx=10, pady=5)
+        self.chk_batch.grid(row=8, column=0, columnspan=2, padx=10, pady=(15, 5))
 
+        # ----- Run button -----
         self.run_btn = tk.Button(
             root, text="Run Analysis", command=self.run_btn_clicked
         )
-        self.run_btn.grid(row=7, column=0, columnspan=2, pady=15)
+        self.run_btn.grid(row=9, column=0, columnspan=2, pady=15)
 
     def toggle_batch_mode(self):
         if self.batch_mode_var.get():
@@ -82,10 +102,21 @@ class PrecipGUI:
                 else start_date
             )
 
+            run_precip = self.ghcn_var.get() or self.gridded_var.get()
+            run_usgs = self.usgs_var.get()
+            run_nwm = self.nwm_var.get()
+
+            if not (run_precip or run_usgs or run_nwm):
+                messagebox.showwarning(
+                    "No Analysis Selected",
+                    "Please select at least one analysis type to run.",
+                )
+                return
+
             self.run_btn.config(state=tk.DISABLED)
             self.root.update()
 
-            if is_batch:
+            if is_batch and run_precip:
                 self.dispatcher.notify(
                     {
                         "message_type": "batch_prefetch",
@@ -95,7 +126,7 @@ class PrecipGUI:
                         "end_date": end_date,
                         "ghcn": self.ghcn_var.get(),
                         "gridded": self.gridded_var.get(),
-                        "data_dir": "data",  # will be resolved properly
+                        "data_dir": "data",
                         "output_dir": "output",
                     }
                 )
@@ -110,13 +141,29 @@ class PrecipGUI:
                     "data_dir": "data",
                 }
 
-                if self.ghcn_var.get() or self.gridded_var.get():
+                if run_precip:
                     msg = {"message_type": "precip_analysis", **bulk}
                     if self.gridded_var.get():
                         msg["gridded"] = True
                     self.dispatcher.notify(msg)
 
-                # Other analyses (USGS, NWM, PDSI) will be added later
+                if run_usgs:
+                    self.dispatcher.notify(
+                        {
+                            "message_type": "usgs_analysis",
+                            **bulk,
+                        }
+                    )
+
+                if run_nwm:
+                    self.dispatcher.notify(
+                        {
+                            "message_type": "nwm_analysis",
+                            **bulk,
+                        }
+                    )
+
+                # Generate PDF after the analyses for this date
                 self.dispatcher.notify({"message_type": "generate_pdf", **bulk})
                 current_date += timedelta(days=1)
 

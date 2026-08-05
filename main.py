@@ -1,3 +1,4 @@
+# main.py
 import os
 import tkinter as tk
 from engine import EventDispatcher
@@ -8,6 +9,8 @@ from gui import PrecipGUI
 from config import load_manifest
 from adapters.precip_adapter import PrecipAdapter
 from adapters.plotter_adapter import PlotterAdapter
+from adapters.usgs_adapter import UsgsAdapter
+from adapters.nwm_adapter import NwmAdapter
 
 
 def setup_logging():
@@ -33,7 +36,7 @@ def setup_logging():
     # 3. Set the ROOT logger to WARNING and add handlers.
     logging.basicConfig(level=logging.INFO, handlers=[file_handler, console_handler])
 
-    # 4. Explicitly set YOUR local modules to DEBUG
+    # 4. Explicitly set local modules to DEBUG
     local_modules = [
         "__main__",
         "engine",
@@ -42,6 +45,8 @@ def setup_logging():
         "core.gridded_downloader",
         "core.precip",
         "core.plotting",
+        "core.nwm_stream",
+        "core.usgs_stream",
         "config",
     ]
     for module_name in local_modules:
@@ -58,8 +63,8 @@ if __name__ == "__main__":
     # New precip pipeline
     PrecipAdapter().register_handlers(dispatcher)
     PlotterAdapter().register_handlers(dispatcher)
-
-    # TODO: Add other adapters later
+    UsgsAdapter().register_handlers(dispatcher)
+    NwmAdapter().register_handlers(dispatcher)
 
     root = tk.Tk()
     app = PrecipGUI(root, dispatcher)

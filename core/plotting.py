@@ -120,18 +120,26 @@ def store_usgs_data(data: Dict[str, Any]):
     path = _get_data_path(
         data["output_dir"], data["lat"], data["lon"], data["obs_date"], "USGS"
     )
-    payload = {"usgs_condition": data.get("usgs_condition")}
+    payload = {
+        "usgs_condition": data.get("usgs_condition"),
+        "usgs_sites": data.get("usgs_sites", []),
+    }
     with open(path, "w") as f:
         json.dump(payload, f, indent=4, cls=NpEncoder)
+    logger.info(f"Stored USGS data: {path}")
 
 
 def store_nwm_data(data: Dict[str, Any]):
     path = _get_data_path(
         data["output_dir"], data["lat"], data["lon"], data["obs_date"], "NWM"
     )
-    payload = {"nwm_condition": data.get("nwm_condition")}
+    payload = {
+        "nwm_condition": data.get("nwm_condition"),
+        "nwm_reaches": data.get("nwm_reaches", []),
+    }
     with open(path, "w") as f:
         json.dump(payload, f, indent=4, cls=NpEncoder)
+    logger.info(f"Stored NWM data: {path}")
 
 
 def store_analysis_data(message: Dict[str, Any]):
@@ -433,7 +441,7 @@ def _plot_single_page(
         [light_grey, white],
     ]
 
-    # Fetch PDSI Values from data file
+    # PDSI
     palmer_value = pdsi_data.get("palmer_value")
     palmer_class = pdsi_data.get("palmer_class")
     palmer_color = pdsi_data.get("palmer_color")
@@ -448,7 +456,7 @@ def _plot_single_page(
         color_tuple = tuple(palmer_color) if palmer_color else white
         desc_colors.append([light_grey, color_tuple])
 
-    # Streamflow Values Block Extraction
+    # Summary lines for streamflow (kept short)
     usgs_condition = usgs_data.get("usgs_condition")
     if usgs_condition is not None:
         desc_vals.append(["USGS Streamflow", usgs_condition])
@@ -468,7 +476,12 @@ def _plot_single_page(
     description_table.auto_set_font_size(False)
     description_table.set_fontsize(10)
 
-    if is_gridded:
+    # ----- Bottom table area (ax4) – precip stations OR streamflow sites -----
+    usgs_sites = usgs_data.get("usgs_sites") or []
+    nwm_reaches = nwm_data.get("nwm_reaches") or []
+
+    if is_gridded and not usgs_sites and not nwm_reaches:
+        # Original gridded-only station summary
         station_table_vals = [
             ["", "Station Count Summary"],
             ["nClimGrid-Daily Data Used", "Yes"],
@@ -480,7 +493,68 @@ def _plot_single_page(
             colWidths=[0.4, 0.3],
             loc="center",
         )
+    elif usgs_sites or nwm_reaches:
+        # Prefer showing streamflow detail when available
+        table_vals = []
+        table_colors = []
+
+        if usgs_sites:
+            table_vals.append(
+                [
+                    "USGS Gage",
+                    "Distance (mi)",
+                    "Flow (cfs)",
+                    "Percentile",
+                    "Condition",
+                ]
+            )
+            table_colors.append([light_grey] * 5)
+            for s in usgs_sites[:5]:
+                table_vals.append(
+                    [
+                        str(s.get("name", s.get("gage_id", "")))[:28],
+                        f"{s.get('distance_mi', 0):.1f}",
+                        f"{s.get('flow_cfs', 0):.1f}",
+                        f"{s.get('percentile', 0):.0f}",
+                        s.get("condition", ""),
+                    ]
+                )
+                table_colors.append([white] * 5)
+
+        if nwm_reaches:
+            if table_vals:  # spacer row if both present
+                table_vals.append([""] * 5)
+                table_colors.append([white] * 5)
+            table_vals.append(
+                [
+                    "NWM COMID",
+                    "Distance (mi)",
+                    "Flow (cfs)",
+                    "Percentile",
+                    "Condition",
+                ]
+            )
+            table_colors.append([light_grey] * 5)
+            for r in nwm_reaches[:5]:
+                table_vals.append(
+                    [
+                        str(r.get("COMID", "")),
+                        f"{r.get('distance_mi', 0):.1f}",
+                        f"{r.get('flow_cfs', 0):.1f}",
+                        f"{r.get('percentile', 0):.0f}",
+                        r.get("condition", ""),
+                    ]
+                )
+                table_colors.append([white] * 5)
+
+        stations_table = ax4.table(
+            cellText=table_vals,
+            cellColours=table_colors,
+            colWidths=[0.28, 0.14, 0.14, 0.14, 0.22],
+            loc="center",
+        )
     else:
+        # Classic GHCN station table
         station_table_vals = [
             [
                 "Weather Station Name",
@@ -533,8 +607,9 @@ def _plot_single_page(
             ],
             loc="center",
         )
+
     stations_table.auto_set_font_size(False)
-    stations_table.set_fontsize(10)
+    stations_table.set_fontsize(9)
 
     plt.subplots_adjust(
         wspace=0.00,
