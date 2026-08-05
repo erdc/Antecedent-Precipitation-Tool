@@ -42,9 +42,7 @@ class NwmAdapter:
                 date_obj = datetime.strptime(date_str, "%Y-%m-%d")
 
             data_dir = message["data_dir"]
-            cache_dir = message.get("cache_dir")
-            if cache_dir == None:
-                cache_dir = os.path.join(message.get("output_dir"), "data")
+            cache_dir = message.get("cache_dir", os.path.join(data_dir, "nwm_cache"))
             state_shapefile = message.get(
                 "state_shapefile",
                 os.path.join(data_dir, "usa_shp", "tl_2023_us_state.shp"),
