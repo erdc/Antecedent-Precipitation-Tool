@@ -107,10 +107,10 @@ def calc_percentile(current_flow: float, hist_df: pd.DataFrame, date) -> float:
 
 def condition_from_percentile(perc: float) -> str:
     if perc > 75:
-        return "Wet / Above Normal"
+        return "Wet/Above Normal"
     if perc >= 25:
         return "Normal"
-    return "Dry / Below Normal"
+    return "Dry/Below Normal"
 
 
 # ---------------------------------------------------------------------------
@@ -535,10 +535,13 @@ def analyze_nwm(
     result_df = pd.DataFrame(results).sort_values("distance_mi").reset_index(drop=True)
 
     # --- optional side products ---
-    if write_csv and output_dir:
-        write_nwm_csv(result_df, output_dir, date_obj)
-    if write_kml and output_dir:
-        write_nwm_kml(result_df, local_comids, lat, lon, date_obj, output_dir)
+    coord_str = f"{lat}_{lon}"
+    coord_dir = os.path.join(output_dir, coord_str)
+
+    if write_csv and coord_dir:
+        write_nwm_csv(result_df, coord_dir, date_obj)
+    if write_kml and coord_dir:
+        write_nwm_kml(result_df, local_comids, lat, lon, date_obj, coord_dir)
 
     logger.info(f"NWM analysis complete – {len(result_df)} reaches")
     return result_df

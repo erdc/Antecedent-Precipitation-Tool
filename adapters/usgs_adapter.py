@@ -45,6 +45,9 @@ class UsgsAdapter:
                 lon=message["lon"],
                 analysis_date=date_str,
                 data_dir=message["data_dir"],
+                output_dir=message.get("output_dir"),
+                write_kml=message.get("write_kml", True),
+                write_csv=message.get("write_csv", True),
             )
 
             if result_df is None or result_df.empty:

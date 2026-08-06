@@ -160,20 +160,113 @@ def _get_region_gages(stusps: str, date_str: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def analyze_usgs(lat: float, lon: float, analysis_date: str, data_dir: str = "data"):
+# ---------------------------------------------------------------------------
+# Optional side-product writers (mirrors NWM)
+# ---------------------------------------------------------------------------
+def write_usgs_csv(result_df: pd.DataFrame, output_dir: str, date_obj: datetime) -> str:
+    os.makedirs(output_dir, exist_ok=True)
+    path = os.path.join(output_dir, f"USGS_STATS_{date_obj.date()}.csv")
+    result_df.to_csv(path, index=False)
+    logger.info(f"Wrote USGS CSV: {path}")
+    return path
+
+
+def write_usgs_kml(
+    result_df: pd.DataFrame,
+    local_gages: pd.DataFrame,
+    lat: float,
+    lon: float,
+    date_obj: datetime,
+    output_dir: str,
+) -> str:
+    """Write a simple KML with one placemark per gage plus the query point."""
+    from simplekml import Kml
+
+    os.makedirs(output_dir, exist_ok=True)
+    kml = Kml()
+
+    for _, row in result_df.iterrows():
+        gage_id = str(row["gage_id"])
+        match = local_gages[local_gages["gage_id"] == gage_id]
+        if match.empty:
+            continue
+
+        loc = (float(match["lon"].iloc[0]), float(match["lat"].iloc[0]))
+        perc = row["percentile"]
+        desc = (
+            f"name = {row['name']}\n"
+            f"distance = {row['distance_mi']:.2f} mi\n"
+            f"flow = {row['flow_cfs']} cfs\n"
+            f"percentile = {perc:.1f}%\n"
+            f"condition = {row['condition']}"
+        )
+
+        p = kml.newpoint(name=gage_id, coords=[loc], description=desc)
+        if perc > 90:
+            p.style.iconstyle.icon.href = (
+                "http://maps.google.com/mapfiles/kml/paddle/blu-blank.png"
+            )
+        elif perc > 75:
+            p.style.iconstyle.icon.href = (
+                "http://maps.google.com/mapfiles/kml/paddle/ltblu-blank.png"
+            )
+        elif perc >= 25:
+            p.style.iconstyle.icon.href = (
+                "http://maps.google.com/mapfiles/kml/paddle/grn-blank.png"
+            )
+        elif perc >= 10:
+            p.style.iconstyle.icon.href = (
+                "http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png"
+            )
+        else:
+            p.style.iconstyle.icon.href = (
+                "http://maps.google.com/mapfiles/kml/paddle/red-blank.png"
+            )
+
+    qp = kml.newpoint(name="QUERY POINT", coords=[(lon, lat)])
+    qp.style.iconstyle.icon.href = (
+        "http://maps.google.com/mapfiles/kml/paddle/purple-stars.png"
+    )
+
+    path = os.path.join(output_dir, f"USGS_STATS_{date_obj.date()}.kml")
+    kml.save(path)
+    logger.info(f"Wrote USGS KML: {path}")
+    return path
+
+
+def analyze_usgs(
+    lat: float,
+    lon: float,
+    analysis_date: str,
+    data_dir: str = "data",
+    *,
+    output_dir: str | None = None,
+    write_kml: bool = False,
+    write_csv: bool = False,
+):
     """Main function: Run full USGS analysis for a location and date."""
     logger.info(f"Analyzing USGS streamflow for ({lat}, {lon}) on {analysis_date}")
 
-    gages = get_local_gages(lat, lon, analysis_date, data_dir, max_dist=100)
+    if isinstance(analysis_date, datetime):
+        date_obj = analysis_date
+        date_str = analysis_date.strftime("%Y-%m-%d")
+    else:
+        date_str = str(analysis_date)
+        date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+
+    if (write_kml or write_csv) and not output_dir:
+        raise ValueError("output_dir is required when write_kml or write_csv is True")
+
+    gages = get_local_gages(lat, lon, date_str, data_dir, max_dist=100)
     if gages.empty:
         logger.warning("No nearby gages found.")
         return None
 
     results = []
-    end_dt = pd.to_datetime(analysis_date)
+    end_dt = pd.to_datetime(date_str)
 
     for _, gage in gages.iterrows():
-        flow_df = download_usgs_flow(gage["gage_id"], "1950-01-01", analysis_date)
+        flow_df = download_usgs_flow(gage["gage_id"], "1950-01-01", date_str)
         if flow_df.empty:
             continue
 
@@ -218,30 +311,14 @@ def analyze_usgs(lat: float, lon: float, analysis_date: str, data_dir: str = "da
 
     result_df = pd.DataFrame(results)
     logger.info(f"USGS analysis complete. Found {len(result_df)} valid gages.")
+
+    # Optional side products
+    if output_dir:
+        coord_str = f"{lat}_{lon}"
+        coord_dir = os.path.join(output_dir, coord_str)
+        if write_csv:
+            write_usgs_csv(result_df, coord_dir, date_obj)
+        if write_kml:
+            write_usgs_kml(result_df, gages, lat, lon, date_obj, coord_dir)
+
     return result_df
-
-
-# ====================== Quick Test ======================
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    import glob
-
-    search_dir = os.path.abspath(os.path.join(__file__, "..", ".."))
-    result = next(glob.iglob(f"{search_dir}/**/usa_shp/", recursive=True), None)
-    if result is None:
-        raise FileNotFoundError(
-            f"Could not find 'usa_shp' directory under {search_dir}"
-        )
-    result = os.path.abspath(os.path.join(result, ".."))
-    print(result)
-
-    df = analyze_usgs(
-        lat=30.0,
-        lon=-90.0,
-        analysis_date="2023-11-11",
-        data_dir=result,
-    )
-
-    if df is not None:
-        print(df.round(2))
-        print(f"\nClosest gage condition: {df.iloc[0]['condition']}")

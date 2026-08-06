@@ -39,14 +39,10 @@ class NpEncoder(json.JSONEncoder):
 # ====================== DATA STORAGE ======================
 
 
-def _get_coord_str(lat: float, lon: float) -> str:
-    return f"{lat}_{lon}"
-
-
 def _get_data_path(
     output_dir: str, lat: float, lon: float, date: datetime, suffix: str
 ) -> str:
-    coord_str = _get_coord_str(lat, lon)
+    coord_str = f"{lat}_{lon}"
     data_dir = os.path.join(output_dir, coord_str, "data")
     os.makedirs(data_dir, exist_ok=True)
     date_str = date.strftime("%Y-%m-%d")
@@ -160,46 +156,6 @@ def store_analysis_data(message: Dict[str, Any]):
 # ====================== PDF GENERATION ======================
 
 
-def generate_daily_pdf(
-    lat: float, lon: float, analysis_date: datetime, output_dir: str
-):
-    """Generate a single daily PDF report by combining all JSON data for that date."""
-    coord_str = _get_coord_str(lat, lon)
-    pdf_dir = os.path.join(output_dir, coord_str)
-    data_dir = os.path.join(pdf_dir, "data")
-    os.makedirs(pdf_dir, exist_ok=True)
-
-    date_str = analysis_date.strftime("%Y-%m-%d")
-    pdf_path = os.path.join(pdf_dir, f"{date_str}.pdf")
-
-    search_pattern = os.path.join(data_dir, f"{date_str}-*.json")
-    json_files = glob.glob(search_pattern)
-
-    if not json_files:
-        logger.warning(f"No data files found for {date_str}")
-        return
-
-    # Load supplemental data
-    pdsi_data = _load_json_if_exists(os.path.join(data_dir, f"{date_str}-PDSI.json"))
-    usgs_data = _load_json_if_exists(os.path.join(data_dir, f"{date_str}-USGS.json"))
-    nwm_data = _load_json_if_exists(os.path.join(data_dir, f"{date_str}-NWM.json"))
-
-    try:
-        with PdfPages(pdf_path) as pdf:
-            for jfile in json_files:
-                if any(x in jfile for x in ["-PDSI.json", "-USGS.json", "-NWM.json"]):
-                    continue
-
-                with open(jfile) as f:
-                    precip_data = json.load(f)
-
-                _plot_single_page(precip_data, pdsi_data, usgs_data, nwm_data, pdf)
-
-        logger.info(f"Generated PDF: {pdf_path}")
-    except Exception as e:
-        logger.error(f"Failed to generate PDF for {date_str}", exc_info=True)
-
-
 def _load_json_if_exists(path: str) -> Dict:
     if os.path.exists(path):
         with open(path) as f:
@@ -207,12 +163,123 @@ def _load_json_if_exists(path: str) -> Dict:
     return {}
 
 
-def _plot_single_page(
+def generate_daily_pdf(
+    lat: float, lon: float, analysis_date: datetime, output_dir: str
+):
+    """Generate a single daily PDF report. Pages in order: precip → streamflow."""
+    coord_str = f"{lat}_{lon}"
+    pdf_dir = os.path.join(output_dir, coord_str)
+    data_dir = os.path.join(pdf_dir, "data")
+    os.makedirs(pdf_dir, exist_ok=True)
+
+    date_str = analysis_date.strftime("%Y-%m-%d")
+    pdf_path = os.path.join(pdf_dir, f"{date_str}.pdf")
+
+    pdsi_data = _load_json_if_exists(os.path.join(data_dir, f"{date_str}-PDSI.json"))
+    usgs_data = _load_json_if_exists(os.path.join(data_dir, f"{date_str}-USGS.json"))
+    nwm_data = _load_json_if_exists(os.path.join(data_dir, f"{date_str}-NWM.json"))
+
+    search_pattern = os.path.join(data_dir, f"{date_str}-*.json")
+    json_files = glob.glob(search_pattern)
+    precip_files = [
+        f
+        for f in json_files
+        if not any(x in f for x in ["-PDSI.json", "-USGS.json", "-NWM.json"])
+    ]
+
+    if not precip_files and not usgs_data and not nwm_data:
+        logger.warning(f"No data files found for {date_str}")
+        return
+
+    try:
+        with PdfPages(pdf_path) as pdf:
+            # 1. Precip page(s)
+            for jfile in sorted(precip_files):
+                with open(jfile) as f:
+                    precip_data = json.load(f)
+                _plot_precip_page(precip_data, pdsi_data, usgs_data, nwm_data, pdf)
+
+            # 2. Combined USGS + NWM page (if either exists)
+            if usgs_data or nwm_data:
+                meta = _extract_meta(
+                    precip_files, usgs_data, nwm_data, lat, lon, analysis_date
+                )
+                _plot_streamflow_page(usgs_data, nwm_data, pdsi_data, meta, pdf)
+
+        logger.info(f"Generated PDF: {pdf_path}")
+    except Exception as e:
+        logger.error(f"Failed to generate PDF for {date_str}", exc_info=True)
+
+
+def _compute_precip_condition(precip_data: Dict) -> str:
+    """Recompute the wetness result string from stored series (same logic as plot)."""
+
+    def dict_to_series(d):
+        if not d:
+            return pd.Series(dtype=float)
+        s = pd.Series(d)
+        s.index = pd.to_datetime(s.index)
+        return s
+
+    rolling_total = dict_to_series(precip_data.get("rolling_total"))
+    normal_low = dict_to_series(precip_data.get("normal_low"))
+    normal_high = dict_to_series(precip_data.get("normal_high"))
+    obs_date = datetime.strptime(precip_data["obs_date"], "%Y-%m-%d")
+
+    total_score = 0
+    for days_prior, weight in [(0, 3), (30, 2), (60, 1)]:
+        p_date = obs_date - timedelta(days=days_prior)
+        date_str_val = p_date.strftime("%Y-%m-%d")
+        try:
+            obs_val = rolling_total.get(date_str_val)
+            low_val = normal_low.get(date_str_val)
+            high_val = normal_high.get(date_str_val)
+            if any(pd.isna(v) for v in [obs_val, low_val, high_val]):
+                c_val = 0
+            elif obs_val > high_val:
+                c_val = 3
+            elif obs_val < low_val:
+                c_val = 1
+            else:
+                c_val = 2
+            total_score += c_val * weight
+        except (KeyError, TypeError):
+            pass
+
+    if total_score < 10:
+        return f"Drier than Normal ({total_score})"
+    if total_score <= 14:
+        return f"Normal Conditions ({total_score})"
+    return f"Wetter than Normal ({total_score})"
+
+
+def _extract_meta(precip_files, usgs_data, nwm_data, lat, lon, analysis_date):
+    """Pull common metadata for the streamflow page."""
+    meta = {
+        "lat": lat,
+        "lon": lon,
+        "elev": 0.0,
+        "obs_date": analysis_date,
+        "precip_condition": None,
+        "usgs_condition": usgs_data.get("usgs_condition"),
+        "nwm_condition": nwm_data.get("nwm_condition"),
+    }
+    if precip_files:
+        with open(precip_files[0]) as f:
+            p = json.load(f)
+        meta["lat"] = p.get("lat", lat)
+        meta["lon"] = p.get("lon", lon)
+        meta["elev"] = p.get("elev", 0.0)
+        meta["obs_date"] = datetime.strptime(p["obs_date"], "%Y-%m-%d")
+        meta["precip_condition"] = _compute_precip_condition(p)
+    return meta
+
+
+def _plot_precip_page(
     precip_data: Dict, pdsi_data: Dict, usgs_data: Dict, nwm_data: Dict, pdf
 ):
-    """Internal function that builds one matplotlib page."""
+    """Original precip page layout (graph + rain table + stations + description)."""
 
-    # Convert dicts back to Series where needed
     def dict_to_series(d):
         if not d:
             return pd.Series(dtype=float)
@@ -241,7 +308,6 @@ def _plot_single_page(
     light_grey = (0.85, 0.85, 0.85)
     white = (1, 1, 1)
 
-    # Plotting code (kept very close to original)
     rcParams["xtick.direction"] = "out"
     rcParams["ytick.direction"] = "out"
 
@@ -257,6 +323,7 @@ def _plot_single_page(
         ax.axis("off")
         ax.axis("tight")
 
+    # ----- Main graph -----
     ax1.xaxis.set_major_locator(mdates.MonthLocator())
     ax1.xaxis.set_minor_locator(mdates.MonthLocator(bymonthday=16))
     ax1.xaxis.set_major_formatter(ticker.NullFormatter())
@@ -321,6 +388,7 @@ def _plot_single_page(
             fontsize=20,
         )
 
+    # ----- Rain condition table (ax2) -----
     total_score = 0
     rain_table_vals = [
         [
@@ -358,7 +426,6 @@ def _plot_single_page(
                     condition, c_val = "Normal", 2
 
                 offset = (10, -25) if obs_val > (rolling_max * 0.85) else (15, 30)
-
                 ax1.annotate(
                     date_str_val,
                     xy=(pd.Timestamp(date_str_val), obs_val),
@@ -380,7 +447,7 @@ def _plot_single_page(
                 [
                     date_str_val,
                     f"{low_val:.2f}" if low_val is not None else "N/A",
-                    (f"{high_val:.2f}" if high_val is not None else "N/A"),
+                    f"{high_val:.2f}" if high_val is not None else "N/A",
                     f"{obs_val:.2f}" if obs_val is not None else "N/A",
                     condition,
                     c_val,
@@ -390,16 +457,7 @@ def _plot_single_page(
             )
         except (KeyError, TypeError):
             rain_table_vals.append(
-                [
-                    date_str_val,
-                    "N/A",
-                    "N/A",
-                    "N/A",
-                    "Error",
-                    0,
-                    weight,
-                    0,
-                ]
+                [date_str_val, "N/A", "N/A", "N/A", "Error", 0, weight, 0]
             )
         rain_colors.append([white] * 8)
 
@@ -427,12 +485,10 @@ def _plot_single_page(
     the_table.auto_set_font_size(False)
     the_table.set_fontsize(10)
 
+    # ----- Description table (ax3) – shortened streamflow one-liners -----
     desc_vals = [
         ["Coordinates", f"{lat:.4f}, {lon:.4f}"],
-        [
-            "Observation Date",
-            (obs_date.strftime("%Y-%m-%d") if obs_date else ""),
-        ],
+        ["Observation Date", obs_date.strftime("%Y-%m-%d")],
         ["Elevation (ft)", f"{elev:.2f}"],
     ]
     desc_colors = [
@@ -441,11 +497,9 @@ def _plot_single_page(
         [light_grey, white],
     ]
 
-    # PDSI
     palmer_value = pdsi_data.get("palmer_value")
     palmer_class = pdsi_data.get("palmer_class")
     palmer_color = pdsi_data.get("palmer_color")
-
     if palmer_value is not None and palmer_class is not None:
         display_text = (
             "Not Available"
@@ -456,7 +510,6 @@ def _plot_single_page(
         color_tuple = tuple(palmer_color) if palmer_color else white
         desc_colors.append([light_grey, color_tuple])
 
-    # Summary lines for streamflow (kept short)
     usgs_condition = usgs_data.get("usgs_condition")
     if usgs_condition is not None:
         desc_vals.append(["USGS Streamflow", usgs_condition])
@@ -469,19 +522,15 @@ def _plot_single_page(
 
     description_table = ax3.table(
         cellText=desc_vals,
-        colWidths=[0.4, 0.54],
+        colWidths=[0.42, 0.52],
         cellColours=desc_colors,
         loc="center left",
     )
     description_table.auto_set_font_size(False)
-    description_table.set_fontsize(10)
+    description_table.set_fontsize(9)
 
-    # ----- Bottom table area (ax4) – precip stations OR streamflow sites -----
-    usgs_sites = usgs_data.get("usgs_sites") or []
-    nwm_reaches = nwm_data.get("nwm_reaches") or []
-
-    if is_gridded and not usgs_sites and not nwm_reaches:
-        # Original gridded-only station summary
+    # ----- Bottom station table (ax4) -----
+    if is_gridded:
         station_table_vals = [
             ["", "Station Count Summary"],
             ["nClimGrid-Daily Data Used", "Yes"],
@@ -493,68 +542,7 @@ def _plot_single_page(
             colWidths=[0.4, 0.3],
             loc="center",
         )
-    elif usgs_sites or nwm_reaches:
-        # Prefer showing streamflow detail when available
-        table_vals = []
-        table_colors = []
-
-        if usgs_sites:
-            table_vals.append(
-                [
-                    "USGS Gage",
-                    "Distance (mi)",
-                    "Flow (cfs)",
-                    "Percentile",
-                    "Condition",
-                ]
-            )
-            table_colors.append([light_grey] * 5)
-            for s in usgs_sites[:5]:
-                table_vals.append(
-                    [
-                        str(s.get("name", s.get("gage_id", "")))[:28],
-                        f"{s.get('distance_mi', 0):.1f}",
-                        f"{s.get('flow_cfs', 0):.1f}",
-                        f"{s.get('percentile', 0):.0f}",
-                        s.get("condition", ""),
-                    ]
-                )
-                table_colors.append([white] * 5)
-
-        if nwm_reaches:
-            if table_vals:  # spacer row if both present
-                table_vals.append([""] * 5)
-                table_colors.append([white] * 5)
-            table_vals.append(
-                [
-                    "NWM COMID",
-                    "Distance (mi)",
-                    "Flow (cfs)",
-                    "Percentile",
-                    "Condition",
-                ]
-            )
-            table_colors.append([light_grey] * 5)
-            for r in nwm_reaches[:5]:
-                table_vals.append(
-                    [
-                        str(r.get("COMID", "")),
-                        f"{r.get('distance_mi', 0):.1f}",
-                        f"{r.get('flow_cfs', 0):.1f}",
-                        f"{r.get('percentile', 0):.0f}",
-                        r.get("condition", ""),
-                    ]
-                )
-                table_colors.append([white] * 5)
-
-        stations_table = ax4.table(
-            cellText=table_vals,
-            cellColours=table_colors,
-            colWidths=[0.28, 0.14, 0.14, 0.14, 0.22],
-            loc="center",
-        )
     else:
-        # Classic GHCN station table
         station_table_vals = [
             [
                 "Weather Station Name",
@@ -595,31 +583,141 @@ def _plot_single_page(
         stations_table = ax4.table(
             cellText=station_table_vals,
             cellColours=station_colors,
-            colWidths=[
-                0.25,
-                0.15,
-                0.095,
-                0.097,
-                0.087,
-                0.087,
-                0.104,
-                0.132,
-            ],
+            colWidths=[0.25, 0.15, 0.095, 0.097, 0.087, 0.087, 0.104, 0.132],
             loc="center",
         )
-
     stations_table.auto_set_font_size(False)
-    stations_table.set_fontsize(9)
+    stations_table.set_fontsize(10)
 
     plt.subplots_adjust(
-        wspace=0.00,
-        hspace=0.08,
-        left=0.047,
-        bottom=0.08,
-        top=0.968,
-        right=0.99,
+        wspace=0.00, hspace=0.08, left=0.047, bottom=0.08, top=0.968, right=0.99
+    )
+    pdf.savefig(fig, facecolor=fig.get_facecolor())
+    plt.close(fig)
+
+
+def _plot_streamflow_page(
+    usgs_data: Dict, nwm_data: Dict, pdsi_data: Dict, meta: Dict, pdf
+):
+    """
+    Combined USGS + NWM page.
+    Location / date / elevation shown as a page title.
+    Two side-by-side tables + a notes panel at the bottom.
+    """
+    light_grey = (0.85, 0.85, 0.85)
+    white = (1, 1, 1)
+
+    lat = meta["lat"]
+    lon = meta["lon"]
+    elev = meta["elev"]
+    obs_date = meta["obs_date"]
+
+    fig = plt.figure(figsize=(17, 11), dpi=140)
+    fig.set_facecolor("0.77")
+
+    # Page title (replaces the old description box)
+    title = (
+        f"Streamflow Analysis – {lat:.4f}, {lon:.4f} | {obs_date.strftime('%Y-%m-%d')}"
+    )
+    fig.suptitle(title, fontsize=16, y=0.97)
+
+    # Layout: USGS | NWM on top row, notes spanning bottom
+    ax_usgs = plt.subplot2grid((3, 2), (0, 0), rowspan=2)
+    ax_nwm = plt.subplot2grid((3, 2), (0, 1), rowspan=2)
+    ax_notes = plt.subplot2grid((3, 2), (2, 0), colspan=2)
+
+    for ax in [ax_usgs, ax_nwm, ax_notes]:
+        ax.axis("off")
+        ax.axis("tight")
+
+    # ----- USGS table (top-left) -----
+    sites = (usgs_data or {}).get("usgs_sites") or []
+    usgs_vals = [["Gage Name", "ID", "Dist (mi)", "Flow (cfs)", "%ile", "Condition"]]
+    usgs_colors = [[light_grey] * 6]
+    for s in sites[:7]:
+        usgs_vals.append(
+            [
+                str(s.get("name", ""))[:26],
+                str(s.get("gage_id", "")),
+                f"{s.get('distance_mi', 0):.1f}",
+                f"{s.get('flow_cfs', 0):.1f}",
+                f"{s.get('percentile', 0):.0f}",
+                s.get("condition", ""),
+            ]
+        )
+        usgs_colors.append([white] * 6)
+    if len(usgs_vals) == 1:
+        usgs_vals.append(["No valid USGS gages", "", "", "", "", ""])
+        usgs_colors.append([white] * 6)
+
+    t_usgs = ax_usgs.table(
+        cellText=usgs_vals,
+        cellColours=usgs_colors,
+        colWidths=[0.30, 0.12, 0.12, 0.14, 0.10, 0.18],
+        loc="upper center",
+    )
+    t_usgs.auto_set_font_size(False)
+    t_usgs.set_fontsize(9)
+    ax_usgs.set_title(
+        f"USGS Streamflow  –  {meta.get('usgs_condition') or 'No Data'}",
+        fontsize=13,
+        pad=8,
     )
 
+    # ----- NWM table (top-right) -----
+    reaches = (nwm_data or {}).get("nwm_reaches") or []
+    nwm_vals = [["COMID", "Dist (mi)", "Flow (cfs)", "%ile", "Condition"]]
+    nwm_colors = [[light_grey] * 5]
+    for r in reaches[:7]:
+        nwm_vals.append(
+            [
+                str(r.get("COMID", "")),
+                f"{r.get('distance_mi', 0):.1f}",
+                f"{r.get('flow_cfs', 0):.1f}",
+                f"{r.get('percentile', 0):.0f}",
+                r.get("condition", ""),
+            ]
+        )
+        nwm_colors.append([white] * 5)
+    if len(nwm_vals) == 1:
+        nwm_vals.append(["No valid NWM reaches", "", "", "", ""])
+        nwm_colors.append([white] * 5)
+
+    t_nwm = ax_nwm.table(
+        cellText=nwm_vals,
+        cellColours=nwm_colors,
+        colWidths=[0.20, 0.16, 0.18, 0.12, 0.22],
+        loc="upper center",
+    )
+    t_nwm.auto_set_font_size(False)
+    t_nwm.set_fontsize(9)
+    ax_nwm.set_title(
+        f"NWM Streamflow  –  {meta.get('nwm_condition') or 'No Data'}",
+        fontsize=13,
+        pad=8,
+    )
+
+    # ----- Notes / data sources (bottom, full width) -----
+    note_vals = [
+        ["USGS Source", "NWIS Daily Values (00060)"],
+        ["USGS Method", "Same-day percentile rank vs historic record"],
+        ["NWM Source", "Analysis-assim + retrospective (1990-2020)"],
+        ["NWM Method", "Same-day percentile rank vs 1990-2020"],
+    ]
+    note_colors = [[light_grey, white]] * 4
+    t_notes = ax_notes.table(
+        cellText=note_vals,
+        cellColours=note_colors,
+        colWidths=[0.22, 0.75],
+        loc="upper center",
+    )
+    t_notes.auto_set_font_size(False)
+    t_notes.set_fontsize(10)
+    ax_notes.set_title("Data Sources & Methods", fontsize=13, pad=8)
+
+    plt.subplots_adjust(
+        wspace=0.08, hspace=0.30, left=0.04, bottom=0.06, top=0.90, right=0.97
+    )
     pdf.savefig(fig, facecolor=fig.get_facecolor())
     plt.close(fig)
 
@@ -631,7 +729,7 @@ def merge_daily_pdfs(
     lat: float, lon: float, start_date: datetime, end_date: datetime, output_dir: str
 ):
     """Merge all daily PDFs into one Batch_Results.pdf."""
-    coord_str = _get_coord_str(lat, lon)
+    coord_str = f"{lat}_{lon}"
     pdf_dir = os.path.join(output_dir, coord_str)
 
     pdf_files = []
