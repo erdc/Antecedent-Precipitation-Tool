@@ -14,6 +14,7 @@ from typing import Any, Dict
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+import matplotlib.colors as mcolors
 import numpy as np
 import pandas as pd
 from matplotlib import rcParams

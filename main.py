@@ -12,6 +12,7 @@ from adapters.plotter_adapter import PlotterAdapter
 from adapters.usgs_adapter import UsgsAdapter
 from adapters.nwm_adapter import NwmAdapter
 from adapters.wimp_adapter import WimpAdapter
+from adapters.pdsi_adapter import PdsiAdapter
 
 
 def setup_logging():
@@ -49,6 +50,7 @@ def setup_logging():
         "core.nwm_stream",
         "core.usgs_stream",
         "core.wimp_analysis",
+        "core.pdsi",
         "config",
     ]
     for module_name in local_modules:
@@ -68,6 +70,7 @@ if __name__ == "__main__":
     UsgsAdapter().register_handlers(dispatcher)
     NwmAdapter().register_handlers(dispatcher)
     WimpAdapter().register_handlers(dispatcher)
+    PdsiAdapter().register_handlers(dispatcher)
 
     root = tk.Tk()
     app = PrecipGUI(root, dispatcher)

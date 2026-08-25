@@ -8,7 +8,7 @@ class PrecipGUI:
         self.root = root
         self.dispatcher = dispatcher
         self.root.title("Precipitation Analysis Tool")
-        self.root.geometry("420x480")
+        self.root.geometry("440x480")  # Slightly wider to fit the text comfortably
 
         # ----- Location / Date -----
         tk.Label(root, text="Latitude:").grid(
@@ -64,10 +64,15 @@ class PrecipGUI:
         )
         self.chk_nwm.grid(row=6, column=1, padx=10, pady=2, sticky="w")
 
-        # --- WIMP CHECKBOX ADDED ---
         self.wimp_var = tk.BooleanVar(value=True)
         self.chk_wimp = tk.Checkbutton(root, text="WIMP Season", variable=self.wimp_var)
         self.chk_wimp.grid(row=7, column=0, padx=10, pady=2, sticky="w")
+
+        self.pdsi_var = tk.BooleanVar(value=True)
+        self.chk_pdsi = tk.Checkbutton(
+            root, text="PDSI Analysis", variable=self.pdsi_var
+        )
+        self.chk_pdsi.grid(row=7, column=1, padx=10, pady=2, sticky="w")
 
         # ----- Batch mode -----
         self.batch_mode_var = tk.BooleanVar(value=False)
@@ -110,10 +115,11 @@ class PrecipGUI:
             run_precip = self.ghcn_var.get() or self.gridded_var.get()
             run_usgs = self.usgs_var.get()
             run_nwm = self.nwm_var.get()
-            # --- WIMP VARIABLE CHECKED ---
             run_wimp = self.wimp_var.get()
+            run_pdsi = self.pdsi_var.get()
 
-            if not (run_precip or run_usgs or run_nwm or run_wimp):
+            # Ensure at least one analysis is selected
+            if not (run_precip or run_usgs or run_nwm or run_wimp or run_pdsi):
                 messagebox.showwarning(
                     "No Analysis Selected",
                     "Please select at least one analysis type to run.",
@@ -162,6 +168,9 @@ class PrecipGUI:
 
                 if run_wimp:
                     self.dispatcher.notify({"message_type": "wimp_analysis", **bulk})
+
+                if run_pdsi:
+                    self.dispatcher.notify({"message_type": "pdsi_analysis", **bulk})
 
                 # Generate PDF after the analyses for this date
                 self.dispatcher.notify({"message_type": "generate_pdf", **bulk})
