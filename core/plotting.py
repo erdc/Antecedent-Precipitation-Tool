@@ -138,6 +138,19 @@ def store_nwm_data(data: Dict[str, Any]):
     logger.info(f"Stored NWM data: {path}")
 
 
+def store_wimp_data(data: Dict[str, Any]):
+    """Stores the single-line WIMP conclusion."""
+    path = _get_data_path(
+        data["output_dir"], data["lat"], data["lon"], data["obs_date"], "WIMP"
+    )
+    payload = {
+        "wimp_condition": data.get("wimp_condition"),
+    }
+    with open(path, "w") as f:
+        json.dump(payload, f, indent=4, cls=NpEncoder)
+    logger.info(f"Stored WIMP data: {path}")
+
+
 def store_analysis_data(message: Dict[str, Any]):
     """Route storage to correct handler based on data_type."""
     data_type = message.get("data_type")
@@ -149,6 +162,8 @@ def store_analysis_data(message: Dict[str, Any]):
         store_usgs_data(message)
     elif data_type == "nwm":
         store_nwm_data(message)
+    elif data_type == "wimp":
+        store_wimp_data(message)
     else:
         logger.warning(f"Unknown data_type for storage: {data_type}")
 
@@ -178,16 +193,19 @@ def generate_daily_pdf(
     pdsi_data = _load_json_if_exists(os.path.join(data_dir, f"{date_str}-PDSI.json"))
     usgs_data = _load_json_if_exists(os.path.join(data_dir, f"{date_str}-USGS.json"))
     nwm_data = _load_json_if_exists(os.path.join(data_dir, f"{date_str}-NWM.json"))
+    wimp_data = _load_json_if_exists(os.path.join(data_dir, f"{date_str}-WIMP.json"))
 
     search_pattern = os.path.join(data_dir, f"{date_str}-*.json")
     json_files = glob.glob(search_pattern)
     precip_files = [
         f
         for f in json_files
-        if not any(x in f for x in ["-PDSI.json", "-USGS.json", "-NWM.json"])
+        if not any(
+            x in f for x in ["-PDSI.json", "-USGS.json", "-NWM.json", "-WIMP.json"]
+        )
     ]
 
-    if not precip_files and not usgs_data and not nwm_data:
+    if not precip_files and not usgs_data and not nwm_data and not wimp_data:
         logger.warning(f"No data files found for {date_str}")
         return
 
@@ -197,7 +215,9 @@ def generate_daily_pdf(
             for jfile in sorted(precip_files):
                 with open(jfile) as f:
                     precip_data = json.load(f)
-                _plot_precip_page(precip_data, pdsi_data, usgs_data, nwm_data, pdf)
+                _plot_precip_page(
+                    precip_data, pdsi_data, usgs_data, nwm_data, wimp_data, pdf
+                )
 
             # 2. Combined USGS + NWM page (if either exists)
             if usgs_data or nwm_data:
@@ -276,7 +296,12 @@ def _extract_meta(precip_files, usgs_data, nwm_data, lat, lon, analysis_date):
 
 
 def _plot_precip_page(
-    precip_data: Dict, pdsi_data: Dict, usgs_data: Dict, nwm_data: Dict, pdf
+    precip_data: Dict,
+    pdsi_data: Dict,
+    usgs_data: Dict,
+    nwm_data: Dict,
+    wimp_data: Dict,
+    pdf,
 ):
     """Original precip page layout (graph + rain table + stations + description)."""
 
@@ -518,6 +543,11 @@ def _plot_precip_page(
     nwm_condition = nwm_data.get("nwm_condition")
     if nwm_condition is not None:
         desc_vals.append(["NWM Streamflow", nwm_condition])
+        desc_colors.append([light_grey, white])
+
+    wimp_condition = wimp_data.get("wimp_condition")
+    if wimp_condition is not None:
+        desc_vals.append(["WIMP Condition", wimp_condition])
         desc_colors.append([light_grey, white])
 
     description_table = ax3.table(

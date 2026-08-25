@@ -10,6 +10,7 @@
 *.pickle
 *.log
 *.nc
+!wimp_data.nc
 *.kml
 ula_accepted
 *historic*.csv

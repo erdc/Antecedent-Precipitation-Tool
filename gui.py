@@ -64,6 +64,11 @@ class PrecipGUI:
         )
         self.chk_nwm.grid(row=6, column=1, padx=10, pady=2, sticky="w")
 
+        # --- WIMP CHECKBOX ADDED ---
+        self.wimp_var = tk.BooleanVar(value=True)
+        self.chk_wimp = tk.Checkbutton(root, text="WIMP Season", variable=self.wimp_var)
+        self.chk_wimp.grid(row=7, column=0, padx=10, pady=2, sticky="w")
+
         # ----- Batch mode -----
         self.batch_mode_var = tk.BooleanVar(value=False)
         self.chk_batch = tk.Checkbutton(
@@ -105,8 +110,10 @@ class PrecipGUI:
             run_precip = self.ghcn_var.get() or self.gridded_var.get()
             run_usgs = self.usgs_var.get()
             run_nwm = self.nwm_var.get()
+            # --- WIMP VARIABLE CHECKED ---
+            run_wimp = self.wimp_var.get()
 
-            if not (run_precip or run_usgs or run_nwm):
+            if not (run_precip or run_usgs or run_nwm or run_wimp):
                 messagebox.showwarning(
                     "No Analysis Selected",
                     "Please select at least one analysis type to run.",
@@ -148,20 +155,13 @@ class PrecipGUI:
                     self.dispatcher.notify(msg)
 
                 if run_usgs:
-                    self.dispatcher.notify(
-                        {
-                            "message_type": "usgs_analysis",
-                            **bulk,
-                        }
-                    )
+                    self.dispatcher.notify({"message_type": "usgs_analysis", **bulk})
 
                 if run_nwm:
-                    self.dispatcher.notify(
-                        {
-                            "message_type": "nwm_analysis",
-                            **bulk,
-                        }
-                    )
+                    self.dispatcher.notify({"message_type": "nwm_analysis", **bulk})
+
+                if run_wimp:
+                    self.dispatcher.notify({"message_type": "wimp_analysis", **bulk})
 
                 # Generate PDF after the analyses for this date
                 self.dispatcher.notify({"message_type": "generate_pdf", **bulk})
