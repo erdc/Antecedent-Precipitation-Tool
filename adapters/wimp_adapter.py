@@ -3,8 +3,6 @@ import logging
 import os
 from datetime import datetime
 
-# You would place your updated get_wimp_data_from_nc function in a core module
-# For this example, we'll assume it's in 'core.wimp_analysis'
 from core.wimp_analysis import get_wimp_data_from_nc
 from engine import EventDispatcher
 
@@ -59,7 +57,7 @@ class WimpAdapter:
             elif wimp_result["status"] == "OK":
                 wimp_condition = wimp_result["selected_month_conclusion"]
             else:
-                wimp_condition = "Error"  # Or wimp_result["message"]
+                wimp_condition = "Error"
 
             return {
                 "message_type": "store_data",

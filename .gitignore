@@ -9,6 +9,9 @@
 *.dll
 *.pickle
 *.log
+*.json
+!url_manifest.json
+*.pdf
 *.nc
 !wimp_data.nc
 *.kml
