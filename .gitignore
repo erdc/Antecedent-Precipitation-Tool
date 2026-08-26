@@ -6,6 +6,7 @@
 /Outputs/
 /__pycache__/
 /data/climdiv/
+/data/ghcn_cache/
 /data/pdsi_cache/
 /data/nwm_cache/
 *.pyc
