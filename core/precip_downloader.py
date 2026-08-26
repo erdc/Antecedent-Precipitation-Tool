@@ -16,7 +16,7 @@ if __name__ == "__main__":
         sys.path.insert(0, parent_dir)
 
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format="%(asctime)s | %(levelname)s | %(message)s",
         datefmt="%H:%M:%S",
     )
@@ -137,45 +137,93 @@ def get_ghcn_timeseries_data(
         return df
 
     def _parse_dly_file(file_content: str) -> pd.Series | None:
-        records = []
+        """Optimized high-performance parser bypassing individual pd.to_datetime calls."""
+        dates = []
+        values = []
+
+        # Avoid repeatedly looking up methods/types in the loop
+        pydatetime = datetime
+        float_cast = float
+
         for line in file_content.splitlines():
             if line[17:21] != "PRCP":
                 continue
-            year = int(line[11:15])
-            month = int(line[15:17])
+
+            try:
+                year = int(line[11:15])
+                month = int(line[15:17])
+            except ValueError:
+                continue
+
             idx = 21
             for d in range(1, 32):
                 val_str = line[idx : idx + 5]
                 idx += 8
+
                 if val_str.strip() == "-9999":
                     continue
+
+                # Fast date validation before object creation
                 try:
-                    date = pd.to_datetime(f"{year}-{month:02d}-{d:02d}")
-                    records.append((date, float(val_str)))
+                    # Leverage standard datetime constructor (10x faster than pd.to_datetime)
+                    dt = pydatetime(year, month, d)
+                    dates.append(dt)
+                    values.append(float_cast(val_str))
                 except ValueError:
-                    continue
-        return pd.Series(dict(records)) if records else None
+                    continue  # Invalid days (e.g., Feb 30th)
+
+        if not dates:
+            return None
+
+        # Create Series in one batch conversion and sort index
+        series = pd.Series(values, index=pd.DatetimeIndex(dates))
+        return series.sort_index()
 
     def _has_sufficient_por(
         filepath: str, req_start: datetime, req_end: datetime
     ) -> bool:
-        """Fast check to verify if the .dly file covers the requested date range."""
+        """Superfast seek-based POR checker that reads only the first and last lines."""
         try:
-            with open(filepath, "r") as f:
-                lines = [line for line in f if line[17:21] == "PRCP"]
-                if not lines:
-                    return False
-                first_line = lines[0]
-                last_line = lines[-1]
+            with open(filepath, "rb") as f:
+                # 1. Grab first line
+                first_line = f.readline().decode("utf-8", errors="ignore")
+                while first_line and first_line[17:21] != "PRCP":
+                    first_line = f.readline().decode("utf-8", errors="ignore")
 
-                # Format YYYY (11:15), MM (15:17)
+                if not first_line:
+                    return False
+
+                # 2. Seek to end to grab the last line
+                f.seek(0, os.SEEK_END)
+                file_size = f.tell()
+
+                # Back up 2000 bytes (typical line is ~270 bytes) to find the last PRCP line
+                seek_back = min(file_size, 2000)
+                f.seek(file_size - seek_back, os.SEEK_SET)
+                last_chunk = (
+                    f.read(seek_back).decode("utf-8", errors="ignore").splitlines()
+                )
+
+                last_line = None
+                for line in reversed(last_chunk):
+                    if len(line) >= 21 and line[17:21] == "PRCP":
+                        last_line = line
+                        break
+
+                if not last_line:
+                    return False
+
+                # Parse bounds
                 first_date = datetime(int(first_line[11:15]), int(first_line[15:17]), 1)
                 last_date = datetime(int(last_line[11:15]), int(last_line[15:17]), 1)
+
                 start_month = datetime(req_start.year, req_start.month, 1)
                 end_month = datetime(req_end.year, req_end.month, 1)
 
                 return first_date <= start_month and last_date >= end_month
-        except Exception:
+
+        except Exception as e:
+            logger.debug(f"Fast POR check failed for {filepath}: {e}")
             return False
 
     def _fetch_station_data(station_id: str) -> pd.Series | None:
@@ -184,6 +232,13 @@ def get_ghcn_timeseries_data(
         cached_file = None
         is_stale = False
         has_por = False
+        file_age_days = None
+        FRESH_DAYS = 7  # ← skip POR check for anything this new
+
+        logger.debug(
+            f"{station_id}: found {len(existing_files)} cache file(s): "
+            f"{[os.path.basename(f) for f in existing_files]}"
+        )
 
         if existing_files:
             existing_files.sort()
@@ -191,57 +246,100 @@ def get_ghcn_timeseries_data(
             date_str = os.path.basename(cached_file).split("_")[1].split(".")[0]
             try:
                 file_date = datetime.strptime(date_str, "%Y%m%d")
-                is_stale = (datetime.now() - file_date).days > 30
+                file_age_days = (datetime.now() - file_date).days
+                is_stale = file_age_days > 30
             except ValueError:
                 is_stale = True
-            has_por = _has_sufficient_por(cached_file, start_date, end_date)
+                logger.warning(
+                    f"{station_id}: could not parse date from {os.path.basename(cached_file)}"
+                )
+
+            # Only run the (expensive / often-failing) POR check on older files
+            if file_age_days is not None and file_age_days <= FRESH_DAYS:
+                has_por = True  # treat fresh files as OK
+                logger.debug(
+                    f"{station_id}: age={file_age_days}d ≤ {FRESH_DAYS} → skipping POR check"
+                )
+            else:
+                has_por = _has_sufficient_por(cached_file, start_date, end_date)
+
+            logger.debug(
+                f"{station_id}: cache={os.path.basename(cached_file)} | "
+                f"age={file_age_days}d | stale={is_stale} | has_POR={has_por}"
+            )
+        else:
+            logger.debug(f"{station_id}: no cache file found")
 
         needs_download = (not cached_file) or is_stale or (not has_por)
 
         if needs_download:
+            reason = []
+            if not cached_file:
+                reason.append("no_cache")
+            if is_stale:
+                reason.append("stale")
+            if not has_por:
+                reason.append("insufficient_POR")
+            logger.info(f"{station_id}: DOWNLOAD needed → {', '.join(reason)}")
+
             url = f"{get_base_url('ghcn_daily')}/all/{station_id}.dly"
             try:
+                logger.debug(f"{station_id}: GET {url}")
                 resp = requests.get(url, timeout=25)
                 resp.raise_for_status()
                 new_filepath = os.path.join(cache_dir, f"{station_id}_{today_str}.dly")
 
-                # Write the new file first
                 with open(new_filepath, "w", encoding="utf-8") as f:
                     f.write(resp.text)
+                logger.debug(
+                    f"{station_id}: wrote {os.path.basename(new_filepath)} ({len(resp.text)} bytes)"
+                )
 
-                # Delete only the *old* files (never the one we just wrote)
+                # Delete only older files (never the one we just wrote)
                 for old_file in existing_files:
                     if os.path.abspath(old_file) != os.path.abspath(new_filepath):
                         try:
                             os.remove(old_file)
-                        except OSError:
-                            pass
+                        except OSError as e:
+                            logger.warning(
+                                f"{station_id}: failed to delete {old_file}: {e}"
+                            )
 
                 with open(new_filepath, "r", encoding="utf-8") as f:
-                    return _parse_dly_file(f.read())
+                    series = _parse_dly_file(f.read())
+                if series is not None:
+                    logger.debug(f"{station_id}: parsed {len(series)} PRCP values")
+                else:
+                    logger.warning(f"{station_id}: parsed 0 PRCP values from new file")
+                return series
 
             except Exception as e:
                 if cached_file and os.path.isfile(cached_file):
-                    # Fail hard only when the only local copy is both stale *and* lacks POR
                     if is_stale and not has_por:
                         raise RuntimeError(
                             f"Download failed for {station_id}, and local cached file is both "
                             "stale (>30 days) and lacks sufficient Period of Record (POR)."
                         ) from e
                     logger.warning(
-                        f"Download failed for {station_id}, using fallback cache: {e}"
+                        f"{station_id}: download failed ({e}), falling back to "
+                        f"{os.path.basename(cached_file)}"
                     )
                     with open(cached_file, "r", encoding="utf-8") as f:
                         return _parse_dly_file(f.read())
                 else:
                     logger.warning(
-                        f"Failed to fetch {station_id} and no usable cache available: {e}"
+                        f"{station_id}: download failed and no usable cache: {e}"
                     )
                     return None
         else:
-            # Fresh enough cache with adequate POR – just read it
+            logger.debug(f"{station_id}: using existing cache (fresh + sufficient POR)")
             with open(cached_file, "r", encoding="utf-8") as f:
-                return _parse_dly_file(f.read())
+                series = _parse_dly_file(f.read())
+            if series is not None:
+                logger.debug(
+                    f"{station_id}: parsed {len(series)} PRCP values from cache"
+                )
+            return series
 
     # ====================== Primary Station Logic ======================
     def _get_primary_station(stations_with_data: list[dict], end_date: datetime):
@@ -457,7 +555,7 @@ if __name__ == "__main__":
         # Standardize and sanitize directory paths for Windows/Linux
         data_directory = os.path.abspath(sys.argv[1])
         end_date = datetime.strptime("2023-11-11", "%Y-%m-%d")
-        start_date = end_date - timedelta(days=365 * 2)
+        start_date = end_date - timedelta(days=365 * 30)
 
         series, info, elev = build_composite_precip_series(
             30.0, -90.0, start_date, end_date, data_dir=data_directory

@@ -151,6 +151,7 @@ def run_full_precip_analysis(
         start_date=fetch_start,
         end_date=analysis_date,  # no future data
         use_gridded=use_gridded,
+        data_dir=data_dir,
     )
 
     if use_gridded:
