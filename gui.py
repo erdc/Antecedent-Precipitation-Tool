@@ -39,7 +39,6 @@ class PrecipGUI:
         tk.Label(root, text="Analyses to run:", font=("", 9, "bold")).grid(
             row=4, column=0, columnspan=2, padx=10, pady=(12, 2), sticky="w"
         )
-
         self.gridded_var = tk.BooleanVar(value=False)
         self.chk_gridded = tk.Checkbutton(
             root, text="Gridded (nClimGrid)", variable=self.gridded_var
@@ -129,21 +128,6 @@ class PrecipGUI:
             self.run_btn.config(state=tk.DISABLED)
             self.root.update()
 
-            if is_batch and run_precip:
-                self.dispatcher.notify(
-                    {
-                        "message_type": "batch_prefetch",
-                        "lat": lat,
-                        "lon": lon,
-                        "start_date": start_date,
-                        "end_date": end_date,
-                        "ghcn": self.ghcn_var.get(),
-                        "gridded": self.gridded_var.get(),
-                        "data_dir": "data",
-                        "output_dir": "output",
-                    }
-                )
-
             current_date = start_date
             while current_date <= end_date:
                 bulk = {
@@ -176,6 +160,7 @@ class PrecipGUI:
                 self.dispatcher.notify({"message_type": "generate_pdf", **bulk})
                 current_date += timedelta(days=1)
 
+            # Consolidate batch run outputs if applicable
             if is_batch:
                 self.dispatcher.notify(
                     {

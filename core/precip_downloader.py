@@ -258,7 +258,7 @@ def get_ghcn_timeseries_data(
             if file_age_days is not None and file_age_days <= FRESH_DAYS:
                 has_por = True  # treat fresh files as OK
                 logger.debug(
-                    f"{station_id}: age={file_age_days}d ≤ {FRESH_DAYS} → skipping POR check"
+                    f"{station_id}: age={file_age_days}d <= {FRESH_DAYS} - skipping POR check"
                 )
             else:
                 has_por = _has_sufficient_por(cached_file, start_date, end_date)
@@ -280,7 +280,7 @@ def get_ghcn_timeseries_data(
                 reason.append("stale")
             if not has_por:
                 reason.append("insufficient_POR")
-            logger.info(f"{station_id}: DOWNLOAD needed → {', '.join(reason)}")
+            logger.info(f"{station_id}: DOWNLOAD needed - {', '.join(reason)}")
 
             url = f"{get_base_url('ghcn_daily')}/all/{station_id}.dly"
             try:
