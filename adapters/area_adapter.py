@@ -1,3 +1,4 @@
+# adapters/huc_adapter.py
 import logging
 import os
 
@@ -9,30 +10,31 @@ COORD_DECIMALS = 6
 
 
 def _get_sampler():
-    """Import sampler; allow missing module during development."""
+    """Prefer the new area_sampling module; fall back to old name."""
     try:
-        from core.huc_sampling import dynamic_watershed_sampler
+        from core.area_sampling import dynamic_area_sampler
 
-        return dynamic_watershed_sampler
+        return dynamic_area_sampler
     except ImportError:
-        logger.warning("core.huc_sampling not found; using single-point HUC stub")
-        return None
+        try:
+            from core.area_sampling import dynamic_watershed_sampler
+
+            return dynamic_watershed_sampler
+        except ImportError:
+            logger.warning("No sampling module found – using single-point stub")
+            return None
 
 
-def _stub_sampler(lat, lon, huc_level, data_dir):
-    """Fallback: one point at the requested location so the pipeline can run."""
-    huc_id = f"STUB{huc_level}"
+def _stub_sampler(lat, lon, huc_level=None, **_):
     return {
-        "huc_id": huc_id,
-        "points": [{"lat": lat, "lon": lon}],
+        "huc_id": f"STUB{huc_level or 'CUSTOM'}",
+        "name": "Stub",
+        "area_sq_miles": 0.0,
+        "points": [(lat, lon)],
     }
 
 
 def _parse_point(point):
-    """
-    Normalize a sampler point to (lat, lon) rounded to COORD_DECIMALS.
-    Supports (lat, lon) / [lat, lon] tuples and {"lat", "lon"} dicts.
-    """
     if isinstance(point, (tuple, list)) and len(point) >= 2:
         lat, lon = float(point[0]), float(point[1])
     elif isinstance(point, dict):
@@ -45,46 +47,55 @@ def _parse_point(point):
 
 
 def _coord_dir_name(lat: float, lon: float) -> str:
-    """Stable folder name matching plotting path helpers."""
     return f"{lat:.{COORD_DECIMALS}f}_{lon:.{COORD_DECIMALS}f}"
 
 
-class HucAdapter:
+class AreaAdapter:
     def register_handlers(self, dispatcher: EventDispatcher):
         dispatcher.register("huc_analysis", self.handle_huc_analysis)
 
     def handle_huc_analysis(self, message: dict):
         """
-        Sample points in the HUC, queue analyses + PDF per point, then merge.
-
-        Layout (same as single-point mode under a batch root):
-          {base}/{huc_id}-batch/{lat:.6f}_{lon:.6f}/data/*.json
-          {base}/{huc_id}-batch/{lat:.6f}_{lon:.6f}/{date}.pdf
+        Sample points inside a HUC or a custom polygon, then queue
+        per-point analyses + PDF generation and a final merge.
         """
         lat = message.get("lat")
         lon = message.get("lon")
-        huc_level = message.get("huc_level", 8)
+        huc_level = message.get("huc_level")
         data_dir = message.get("data_dir", "data")
         base_output_dir = message.get("output_dir", "output")
         analysis_types = message.get("analysis_types") or []
         analysis_date = message.get("analysis_date")
+        custom_polygon = message.get("custom_polygon")
+        custom_name = message.get("custom_name") or "CUSTOM"
 
         if not analysis_types:
-            logger.error("HUC analysis: no analysis_types selected")
+            logger.error("HUC/area analysis: no analysis_types selected")
             return None
 
         sampler = _get_sampler()
         try:
             if sampler is not None:
                 logger.info(
-                    f"Running dynamic_watershed_sampler for lat={lat}, "
-                    f"lon={lon}, huc_level={huc_level}"
+                    "Running area sampler  lat=%.5f lon=%.5f  "
+                    "huc_level=%s  custom=%s",
+                    lat,
+                    lon,
+                    huc_level,
+                    bool(custom_polygon),
                 )
-                sampler_result = sampler(lat, lon, huc_level, data_dir)
+                sampler_result = sampler(
+                    lat=lat,
+                    lon=lon,
+                    huc_level=huc_level,
+                    data_dir=data_dir,
+                    custom_polygon=custom_polygon,
+                    custom_name=custom_name,
+                )
             else:
-                sampler_result = _stub_sampler(lat, lon, huc_level, data_dir)
+                sampler_result = _stub_sampler(lat, lon, huc_level)
         except Exception as e:
-            logger.error(f"HUC sampling failed: {e}", exc_info=True)
+            logger.error("Area sampling failed: %s", e, exc_info=True)
             return {
                 "message_type": "warning",
                 "warning_type": "huc_sampling_failed",
@@ -96,7 +107,7 @@ class HucAdapter:
         points = sampler_result.get("points") or []
 
         if not huc_id or not points:
-            logger.error("No HUC ID or points returned from the sampler. Aborting.")
+            logger.error("Sampler returned no ID or points – aborting")
             return None
 
         batch_root = os.path.join(base_output_dir, f"{huc_id}-batch")
@@ -108,7 +119,7 @@ class HucAdapter:
         for point in points:
             sub_lat, sub_lon = _parse_point(point)
             if sub_lat is None or sub_lon is None:
-                logger.warning(f"Skipping unparseable sample point: {point!r}")
+                logger.warning("Skipping unparseable point: %r", point)
                 continue
 
             point_dir = os.path.join(batch_root, _coord_dir_name(sub_lat, sub_lon))
@@ -118,11 +129,13 @@ class HucAdapter:
                 "lat": sub_lat,
                 "lon": sub_lon,
                 "analysis_date": analysis_date,
-                "output_dir": batch_root,
+                "output_dir": batch_root,  # keep all points under the same batch root
                 "data_dir": data_dir,
             }
             if message.get("gridded"):
                 bulk["gridded"] = True
+
+            # pass through optional keys the other adapters understand
             for optional in (
                 "cache_dir",
                 "state_shapefile",
@@ -136,13 +149,13 @@ class HucAdapter:
 
             for analysis_type in analysis_types:
                 follow_ups.append({"message_type": f"{analysis_type}_analysis", **bulk})
-
             follow_ups.append({"message_type": "generate_pdf", **bulk})
 
         if not generated_output_dirs:
-            logger.error("No valid sample points after parsing. Aborting.")
+            logger.error("No valid sample points after parsing – aborting")
             return None
 
+        # Final merge step
         follow_ups.append(
             {
                 "message_type": "merge_huc_pdfs",
@@ -153,8 +166,10 @@ class HucAdapter:
         )
 
         logger.info(
-            f"HUC analysis queued for {len(generated_output_dirs)} points in "
-            f"HUC {huc_id} ({len(follow_ups)} messages)."
+            "Queued %d points in %s (%d messages)",
+            len(generated_output_dirs),
+            huc_id,
+            len(follow_ups),
         )
 
         return {"message_type": "_followups", "messages": follow_ups}
