@@ -19,9 +19,11 @@ import numpy as np
 import pandas as pd
 from matplotlib import rcParams
 from matplotlib.backends.backend_pdf import PdfPages
-from pypdf import PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 logger = logging.getLogger(__name__)
+
+COORD_DECIMALS = 6
 
 
 class NpEncoder(json.JSONEncoder):
@@ -40,10 +42,15 @@ class NpEncoder(json.JSONEncoder):
 # ====================== DATA STORAGE ======================
 
 
+def _coord_str(lat: float, lon: float) -> str:
+    """Stable directory segment shared by store + PDF paths."""
+    return f"{float(lat):.{COORD_DECIMALS}f}_{float(lon):.{COORD_DECIMALS}f}"
+
+
 def _get_data_path(
     output_dir: str, lat: float, lon: float, date: datetime, suffix: str
 ) -> str:
-    coord_str = f"{lat}_{lon}"
+    coord_str = _coord_str(lat, lon)
     data_dir = os.path.join(output_dir, coord_str, "data")
     os.makedirs(data_dir, exist_ok=True)
     date_str = date.strftime("%Y-%m-%d")
@@ -183,7 +190,7 @@ def generate_daily_pdf(
     lat: float, lon: float, analysis_date: datetime, output_dir: str
 ):
     """Generate a single daily PDF report. Pages in order: precip → streamflow."""
-    coord_str = f"{lat}_{lon}"
+    coord_str = _coord_str(lat, lon)
     pdf_dir = os.path.join(output_dir, coord_str)
     data_dir = os.path.join(pdf_dir, "data")
     os.makedirs(pdf_dir, exist_ok=True)
@@ -760,7 +767,7 @@ def merge_daily_pdfs(
     lat: float, lon: float, start_date: datetime, end_date: datetime, output_dir: str
 ):
     """Merge all daily PDFs into one Batch_Results.pdf."""
-    coord_str = f"{lat}_{lon}"
+    coord_str = _coord_str(lat, lon)
     pdf_dir = os.path.join(output_dir, coord_str)
 
     pdf_files = []
@@ -810,3 +817,63 @@ def merge_pdfs(message: Dict[str, Any]):
         end_date=message["end_date"],
         output_dir=message["output_dir"],
     )
+
+
+def merge_huc_batch_pdfs(output_dirs: list, base_output_dir: str, huc_id: str):
+    """
+    Collects generated PDFs from each sampled point directory and merges them
+    into a single consolidated HUC Batch report.
+    """
+    writer = PdfWriter()
+    pdfs_merged = 0
+
+    logging.info(
+        f"Starting PDF merge for HUC {huc_id} across {len(output_dirs)} directories."
+    )
+
+    for folder in output_dirs:
+        if not os.path.exists(folder):
+            logging.warning(
+                f"Expected output directory does not exist, skipping: {folder}"
+            )
+            continue
+
+        # Prefer dated daily PDFs; fall back to any PDF if none match
+        pdf_files = sorted(glob.glob(os.path.join(folder, "????-??-??.pdf")))
+        if not pdf_files:
+            pdf_files = sorted(
+                f
+                for f in glob.glob(os.path.join(folder, "*.pdf"))
+                if not os.path.basename(f).startswith("HUC_")
+                and os.path.basename(f) != "Batch_Results.pdf"
+            )
+
+        for pdf_path in pdf_files:
+            try:
+                logging.info(f"Appending PDF to batch: {pdf_path}")
+                reader = PdfReader(pdf_path)
+                for page in reader.pages:
+                    writer.add_page(page)
+                pdfs_merged += 1
+            except Exception as e:
+                logging.error(f"Failed to read/append PDF {pdf_path}: {e}")
+
+    if pdfs_merged > 0:
+        batch_folder = os.path.join(base_output_dir, f"{huc_id}-batch")
+        os.makedirs(batch_folder, exist_ok=True)
+        merged_output_path = os.path.join(
+            batch_folder, f"HUC_{huc_id}_Batch_Report.pdf"
+        )
+        try:
+            with open(merged_output_path, "wb") as f_out:
+                writer.write(f_out)
+            logging.info(
+                f"Successfully created consolidated HUC report: {merged_output_path}"
+            )
+            return merged_output_path
+        except Exception as e:
+            logging.error(f"Failed to write merged PDF output: {e}")
+    else:
+        logging.error("No valid PDF files were found to merge.")
+
+    return None

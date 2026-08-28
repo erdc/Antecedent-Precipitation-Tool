@@ -6,9 +6,7 @@
 /Outputs/
 /__pycache__/
 /data/climdiv/
-/data/ghcn_cache/
-/data/pdsi_cache/
-/data/nwm_cache/
+/data/*_cache/
 *.pyc
 *.dll
 *.pickle

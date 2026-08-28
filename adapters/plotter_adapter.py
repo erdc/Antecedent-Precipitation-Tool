@@ -9,6 +9,7 @@ import logging
 from core.plotting import (
     generate_pdf,
     merge_pdfs,
+    merge_huc_batch_pdfs,
     store_analysis_data,
 )
 from engine import EventDispatcher
@@ -24,6 +25,7 @@ class PlotterAdapter:
         dispatcher.register("store_data", self.handle_store_data)
         dispatcher.register("generate_pdf", self.handle_generate_pdf)
         dispatcher.register("merge_pdfs", self.handle_merge_pdfs)
+        dispatcher.register("merge_huc_pdfs", self.handle_merge_huc_pdfs)
 
     def handle_store_data(self, message: dict):
         """
@@ -32,7 +34,6 @@ class PlotterAdapter:
         """
         try:
             store_analysis_data(message)
-            # Optionally return a confirmation message (currently not needed)
             return None
         except Exception as e:
             logger.error(f"Failed to store data: {e}", exc_info=True)
@@ -89,6 +90,36 @@ class PlotterAdapter:
             return {
                 "message_type": "warning",
                 "warning_type": "pdf_merge_failed",
+                "error": str(e),
+                "original_message": message,
+            }
+
+    def handle_merge_huc_pdfs(self, message: dict):
+        """
+        Merge per-point daily PDFs into one HUC batch report.
+        """
+        try:
+            required = ["output_dirs", "base_output_dir", "huc_id"]
+            if not all(k in message for k in required):
+                logger.error("Missing required fields for HUC PDF merge")
+                return None
+
+            path = merge_huc_batch_pdfs(
+                output_dirs=message["output_dirs"],
+                base_output_dir=message["base_output_dir"],
+                huc_id=message["huc_id"],
+            )
+            if path:
+                logger.info(f"HUC PDF merge completed: {path}")
+            else:
+                logger.warning("HUC PDF merge produced no output")
+            return None
+
+        except Exception as e:
+            logger.error(f"HUC PDF merge failed: {e}", exc_info=True)
+            return {
+                "message_type": "warning",
+                "warning_type": "huc_pdf_merge_failed",
                 "error": str(e),
                 "original_message": message,
             }

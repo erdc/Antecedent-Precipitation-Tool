@@ -13,6 +13,7 @@ from adapters.usgs_adapter import UsgsAdapter
 from adapters.nwm_adapter import NwmAdapter
 from adapters.wimp_adapter import WimpAdapter
 from adapters.pdsi_adapter import PdsiAdapter
+from adapters.huc_adapter import HucAdapter
 
 
 def setup_logging():
@@ -51,7 +52,9 @@ def setup_logging():
         "core.usgs_stream",
         "core.wimp_analysis",
         "core.pdsi",
+        "core.huc_sampling",
         "config",
+        "adapters.huc_adapter",
     ]
     for module_name in local_modules:
         logger = logging.getLogger(module_name)
@@ -64,13 +67,13 @@ if __name__ == "__main__":
 
     dispatcher = EventDispatcher()
 
-    # New precip pipeline
     PrecipAdapter().register_handlers(dispatcher)
     PlotterAdapter().register_handlers(dispatcher)
     UsgsAdapter().register_handlers(dispatcher)
     NwmAdapter().register_handlers(dispatcher)
     WimpAdapter().register_handlers(dispatcher)
     PdsiAdapter().register_handlers(dispatcher)
+    HucAdapter().register_handlers(dispatcher)
 
     root = tk.Tk()
     app = PrecipGUI(root, dispatcher)
