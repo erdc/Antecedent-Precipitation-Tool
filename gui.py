@@ -1,14 +1,13 @@
 # gui.py
 """
-APT-style GUI – drop-in replacement.
-Preserves the EventDispatcher contract used by the rest of the codebase.
+APT GUI
 """
 
 import csv
+import os
 import tkinter as tk
 from datetime import datetime, timedelta
 from tkinter import filedialog, messagebox, ttk
-from urllib.request import urlopen
 import webbrowser
 
 
@@ -16,271 +15,347 @@ class PrecipGUI:
     def __init__(self, root, dispatcher):
         self.root = root
         self.dispatcher = dispatcher
-        self.root.title("Antecedent Precipitation Tool (APT)")
-        self.root.geometry("520x640")
-        self.root.minsize(480, 580)
 
-        # ----- state -----
-        self.date_list = []  # list of datetime objects for multi-date mode
+        self.root.title("Antecedent Precipitation Tool")
+        self.root.geometry("520x620")
+        self.root.minsize(480, 560)
+        self.root.resizable(True, True)
+
+        # State
+        self.date_mode = "unique"  # "unique" | "range" | "csv"
+        self.date_entries = []  # list of (frame, entry) for unique mode
+        self.custom_polygon_path = None
+
         self._build_ui()
+        self._set_date_mode("unique")
 
     # ------------------------------------------------------------------
-    # UI construction
+    # UI construction – mirrors official APT layout
     # ------------------------------------------------------------------
     def _build_ui(self):
-        pad = {"padx": 8, "pady": 3}
-        f = ttk.Frame(self.root, padding=10)
-        f.pack(fill="both", expand=True)
+        # Main container
+        main = ttk.Frame(self.root, padding=6)
+        main.pack(fill="both", expand=True)
 
-        # ---- Location ----
-        loc = ttk.LabelFrame(f, text="Location", padding=6)
-        loc.pack(fill="x", **pad)
+        # ===== TOP ROW: Gridded + Streamflow + Help =====
+        top = ttk.Frame(main)
+        top.pack(fill="x", pady=(0, 4))
 
-        ttk.Label(loc, text="Latitude:").grid(row=0, column=0, sticky="e", padx=4)
-        self.lat_entry = ttk.Entry(loc, width=12)
-        self.lat_entry.grid(row=0, column=1, sticky="w", padx=4)
+        self.gridded_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            top,
+            text="Use Gridded Precipitation?",
+            variable=self.gridded_var,
+        ).pack(side="left", padx=(0, 12))
+
+        self.streamflow_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            top,
+            text="Calculate Local Streamflow Normal?",
+            variable=self.streamflow_var,
+            command=self._on_streamflow_toggle,
+        ).pack(side="left", padx=(0, 12))
+
+        ttk.Button(
+            top, text="Help / More Info", command=self._open_help, width=16
+        ).pack(side="right")
+
+        ttk.Separator(main, orient="horizontal").pack(fill="x", pady=4)
+
+        # ===== LAT / LON / SCOPE =====
+        loc = ttk.Frame(main)
+        loc.pack(fill="x", pady=2)
+
+        ttk.Label(loc, text="Latitude (DD):").grid(row=0, column=0, sticky="w", padx=2)
+        ttk.Label(loc, text="Longitude (-DD):").grid(
+            row=0, column=1, sticky="w", padx=2
+        )
+        ttk.Label(loc, text="Scope").grid(row=0, column=2, sticky="w", padx=2)
+
+        self.lat_entry = ttk.Entry(loc, width=14)
+        self.lat_entry.grid(row=1, column=0, sticky="w", padx=2, pady=2)
         self.lat_entry.insert(0, "30.0")
 
-        ttk.Label(loc, text="Longitude:").grid(row=0, column=2, sticky="e", padx=4)
-        self.lon_entry = ttk.Entry(loc, width=12)
-        self.lon_entry.grid(row=0, column=3, sticky="w", padx=4)
+        self.lon_entry = ttk.Entry(loc, width=14)
+        self.lon_entry.grid(row=1, column=1, sticky="w", padx=2, pady=2)
         self.lon_entry.insert(0, "-90.0")
 
-        # ---- Dates ----
-        date_fr = ttk.LabelFrame(f, text="Observation Date(s)", padding=6)
-        date_fr.pack(fill="x", **pad)
-
-        ttk.Label(date_fr, text="Date (YYYY-MM-DD):").grid(row=0, column=0, sticky="e")
-        self.date_entry = ttk.Entry(date_fr, width=12)
-        self.date_entry.grid(row=0, column=1, sticky="w", padx=4)
-        self.date_entry.insert(0, "2023-11-11")
-
-        btn_row = ttk.Frame(date_fr)
-        btn_row.grid(row=0, column=2, columnspan=2, sticky="w")
-        ttk.Button(btn_row, text="Add →", width=8, command=self._add_date).pack(
-            side="left", padx=2
+        self.scope_var = tk.StringVar(value="Single Point")
+        scope_opts = ["Single Point", "HUC12", "HUC10", "HUC8", "Custom Polygon"]
+        self.scope_menu = ttk.OptionMenu(
+            loc,
+            self.scope_var,
+            "Single Point",
+            *scope_opts,
+            command=self._on_scope_change,
         )
-        ttk.Button(btn_row, text="Clear", width=6, command=self._clear_dates).pack(
-            side="left", padx=2
+        self.scope_menu.grid(row=1, column=2, sticky="w", padx=2)
+
+        # Custom polygon controls (hidden by default)
+        self.custom_frame = ttk.Frame(main)
+        ttk.Label(self.custom_frame, text="Custom Watershed Name:").grid(
+            row=0, column=0, sticky="w", padx=2
         )
-        ttk.Button(btn_row, text="CSV…", width=6, command=self._load_csv).pack(
-            side="left", padx=2
+        self.custom_name_entry = ttk.Entry(self.custom_frame, width=30)
+        self.custom_name_entry.grid(row=0, column=1, sticky="ew", padx=2)
+
+        ttk.Label(self.custom_frame, text="Custom Watershed Shapefile:").grid(
+            row=1, column=0, sticky="w", padx=2, pady=2
+        )
+        self.custom_path_entry = ttk.Entry(self.custom_frame, width=30)
+        self.custom_path_entry.grid(row=1, column=1, sticky="ew", padx=2)
+        ttk.Button(
+            self.custom_frame, text="Browse…", command=self._browse_shapefile
+        ).grid(row=1, column=2, padx=4)
+
+        ttk.Separator(main, orient="horizontal").pack(fill="x", pady=6)
+
+        # ===== DATES FRAME (content changes with mode) =====
+        self.dates_outer = ttk.LabelFrame(main, text="Observation Date(s)", padding=6)
+        self.dates_outer.pack(fill="both", expand=True, pady=2)
+
+        self.dates_content = ttk.Frame(self.dates_outer)
+        self.dates_content.pack(fill="both", expand=True)
+
+        # ===== BOTTOM BUTTONS =====
+        ttk.Separator(main, orient="horizontal").pack(fill="x", pady=6)
+
+        bottom = ttk.Frame(main)
+        bottom.pack(fill="x")
+
+        self.calc_btn = ttk.Button(
+            bottom, text="Calculate", command=self.run_btn_clicked, width=14
+        )
+        self.calc_btn.pack(side="left", padx=(0, 8))
+
+        self.mode_btn_var = tk.StringVar(value="Switch to Date Range")
+        self.mode_btn = ttk.Button(
+            bottom,
+            textvariable=self.mode_btn_var,
+            command=self._cycle_date_mode,
+            width=20,
+        )
+        self.mode_btn.pack(side="left", padx=(0, 8))
+
+        ttk.Button(bottom, text="Quit", command=self.root.destroy, width=10).pack(
+            side="right"
         )
 
-        # list of selected dates
-        self.date_listbox = tk.Listbox(
-            date_fr, height=4, width=50, exportselection=False
+        # Status
+        self.status_var = tk.StringVar(value="Ready for Input")
+        ttk.Label(main, textvariable=self.status_var, relief="sunken", anchor="w").pack(
+            fill="x", side="bottom", pady=(6, 0)
         )
-        self.date_listbox.grid(row=1, column=0, columnspan=4, sticky="ew", pady=(4, 0))
-        date_fr.columnconfigure(3, weight=1)
 
-        # batch / range mode
-        self.batch_mode_var = tk.BooleanVar(value=False)
-        self.chk_batch = ttk.Checkbutton(
-            date_fr,
-            text="Date Range (start → end)",
-            variable=self.batch_mode_var,
-            command=self._toggle_batch_mode,
-        )
-        self.chk_batch.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 0))
-
-        self.end_date_label = ttk.Label(date_fr, text="End Date:")
-        self.end_date_entry = ttk.Entry(date_fr, width=12)
-
-        # ---- Analysis toggles ----
-        an = ttk.LabelFrame(f, text="Analyses to run", padding=6)
-        an.pack(fill="x", **pad)
-
-        # Precipitation source
-        ttk.Label(an, text="Precipitation:").grid(row=0, column=0, sticky="w")
-        self.precip_source = tk.StringVar(value="ghcn")
-        ttk.Radiobutton(
-            an, text="GHCN Station", variable=self.precip_source, value="ghcn"
-        ).grid(row=0, column=1, sticky="w")
-        ttk.Radiobutton(
-            an, text="Gridded (nClimGrid)", variable=self.precip_source, value="gridded"
-        ).grid(row=0, column=2, sticky="w")
-
-        # Streamflow master
-        self.streamflow_var = tk.BooleanVar(value=True)
-        self.chk_stream = ttk.Checkbutton(
-            an,
-            text="Calculate Local Streamflow Normal (USGS + NWM)",
-            variable=self.streamflow_var,
-            command=self._toggle_streamflow,
-        )
-        self.chk_stream.grid(row=1, column=0, columnspan=3, sticky="w", pady=(4, 0))
-
-        # individual streamflow (kept for flexibility, driven by master)
-        self.usgs_var = tk.BooleanVar(value=True)
-        self.nwm_var = tk.BooleanVar(value=True)
-        self.chk_usgs = ttk.Checkbutton(
-            an, text="USGS Streamflow", variable=self.usgs_var
-        )
-        self.chk_usgs.grid(row=2, column=1, sticky="w")
-        self.chk_nwm = ttk.Checkbutton(an, text="NWM Streamflow", variable=self.nwm_var)
-        self.chk_nwm.grid(row=2, column=2, sticky="w")
-
-        # other indices
+        # Internal analysis toggles (driven by the two top checkboxes)
+        self.usgs_var = tk.BooleanVar(value=False)
+        self.nwm_var = tk.BooleanVar(value=False)
         self.wimp_var = tk.BooleanVar(value=True)
         self.pdsi_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(an, text="WIMP Season", variable=self.wimp_var).grid(
-            row=3, column=1, sticky="w"
-        )
-        ttk.Checkbutton(an, text="PDSI Analysis", variable=self.pdsi_var).grid(
-            row=3, column=2, sticky="w"
-        )
-
-        # ---- AOI / Scope ----
-        aoi = ttk.LabelFrame(f, text="Area of Interest", padding=6)
-        aoi.pack(fill="x", **pad)
-
-        self.aoi_mode = tk.StringVar(value="point")
-        ttk.Radiobutton(
-            aoi,
-            text="Single Point",
-            variable=self.aoi_mode,
-            value="point",
-            command=self._toggle_aoi,
-        ).grid(row=0, column=0, sticky="w")
-        ttk.Radiobutton(
-            aoi,
-            text="HUC Watershed",
-            variable=self.aoi_mode,
-            value="huc",
-            command=self._toggle_aoi,
-        ).grid(row=0, column=1, sticky="w")
-
-        self.huc_level_label = ttk.Label(aoi, text="HUC Level (2–12):")
-        self.huc_level_entry = ttk.Entry(aoi, width=6)
-        self.huc_level_entry.insert(0, "8")
-
-        # ---- Run / status ----
-        btn_fr = ttk.Frame(f)
-        btn_fr.pack(fill="x", pady=12)
-
-        self.run_btn = ttk.Button(
-            btn_fr, text="Run Analysis", command=self.run_btn_clicked
-        )
-        self.run_btn.pack(side="left", padx=(0, 8))
-
-        ttk.Button(btn_fr, text="Help", command=self._open_help).pack(side="left")
-
-        self.status_var = tk.StringVar(value="Ready")
-        ttk.Label(f, textvariable=self.status_var, relief="sunken", anchor="w").pack(
-            fill="x", side="bottom", pady=(4, 0)
-        )
-
-        # initial state
-        self._toggle_batch_mode()
-        self._toggle_aoi()
-        self._toggle_streamflow()
 
     # ------------------------------------------------------------------
-    # UI helpers
+    # Date mode switching (Unique → Range → CSV → Unique …)
     # ------------------------------------------------------------------
-    def _toggle_batch_mode(self):
-        if self.batch_mode_var.get():
-            self.end_date_label.grid(row=2, column=2, sticky="e", padx=4)
-            self.end_date_entry.grid(row=2, column=3, sticky="w")
-            if not self.end_date_entry.get():
-                self.end_date_entry.insert(0, "2023-11-20")
-            # range mode clears explicit list for clarity
-            self._clear_dates()
-            if self.aoi_mode.get() == "huc":
-                self.aoi_mode.set("point")
-                self._toggle_aoi()
-        else:
-            self.end_date_label.grid_forget()
-            self.end_date_entry.grid_forget()
+    def _cycle_date_mode(self):
+        order = ["unique", "range", "csv"]
+        idx = order.index(self.date_mode)
+        next_mode = order[(idx + 1) % 3]
+        self._set_date_mode(next_mode)
 
-    def _toggle_aoi(self):
-        if self.aoi_mode.get() == "huc":
-            self.huc_level_label.grid(row=1, column=0, sticky="e", padx=4, pady=4)
-            self.huc_level_entry.grid(row=1, column=1, sticky="w", pady=4)
-            # HUC currently single-date only in the engine path
-            self.batch_mode_var.set(False)
-            self._toggle_batch_mode()
-            self._clear_dates()
-        else:
-            self.huc_level_label.grid_forget()
-            self.huc_level_entry.grid_forget()
+    def _set_date_mode(self, mode: str):
+        self.date_mode = mode
+        # Clear current content
+        for w in self.dates_content.winfo_children():
+            w.destroy()
+        self.date_entries.clear()
 
-    def _toggle_streamflow(self):
+        if mode == "unique":
+            self.mode_btn_var.set("Switch to Date Range")
+            self._build_unique_dates()
+        elif mode == "range":
+            self.mode_btn_var.set("Switch to CSV Input")
+            self._build_date_range()
+        else:
+            self.mode_btn_var.set("Switch to Unique Dates")
+            self._build_csv_input()
+
+    def _build_unique_dates(self):
+        ttk.Label(
+            self.dates_content,
+            text='Run a single date or click "+" to add more',
+        ).pack(anchor="w", pady=(0, 4))
+
+        ttk.Separator(self.dates_content, orient="horizontal").pack(fill="x", pady=2)
+
+        header = ttk.Frame(self.dates_content)
+        header.pack(fill="x")
+        ttk.Label(header, text="#", width=4).pack(side="left")
+        ttk.Label(header, text="YYYY-MM-DD").pack(side="left", padx=8)
+
+        self.unique_list_frame = ttk.Frame(self.dates_content)
+        self.unique_list_frame.pack(fill="both", expand=True, pady=4)
+
+        btn_row = ttk.Frame(self.dates_content)
+        btn_row.pack(fill="x")
+        ttk.Button(btn_row, text="+", width=3, command=self._add_unique_date).pack(
+            side="left"
+        )
+        ttk.Button(btn_row, text="–", width=3, command=self._remove_unique_date).pack(
+            side="left", padx=4
+        )
+
+        # Start with one date
+        self._add_unique_date()
+
+    def _add_unique_date(self):
+        row = ttk.Frame(self.unique_list_frame)
+        row.pack(fill="x", pady=1)
+        num = len(self.date_entries) + 1
+        ttk.Label(row, text=str(num), width=4).pack(side="left")
+        entry = ttk.Entry(row, width=14)
+        entry.pack(side="left", padx=8)
+        if num == 1:
+            entry.insert(0, "2023-11-11")
+        self.date_entries.append((row, entry))
+
+    def _remove_unique_date(self):
+        if len(self.date_entries) <= 1:
+            return
+        row, _ = self.date_entries.pop()
+        row.destroy()
+        # renumber
+        for i, (r, _) in enumerate(self.date_entries, 1):
+            for child in r.winfo_children():
+                if isinstance(child, ttk.Label):
+                    child.config(text=str(i))
+                    break
+
+    def _build_date_range(self):
+        ttk.Label(
+            self.dates_content,
+            text="Get daily results between a Start Date and End Date",
+        ).pack(anchor="w", pady=(0, 6))
+
+        ttk.Separator(self.dates_content, orient="horizontal").pack(fill="x", pady=2)
+
+        row1 = ttk.Frame(self.dates_content)
+        row1.pack(fill="x", pady=4)
+        ttk.Label(row1, text="Start Date (YYYY-MM-DD):", width=22).pack(side="left")
+        self.start_entry = ttk.Entry(row1, width=14)
+        self.start_entry.pack(side="left")
+        self.start_entry.insert(0, "2023-11-11")
+
+        row2 = ttk.Frame(self.dates_content)
+        row2.pack(fill="x", pady=4)
+        ttk.Label(row2, text="End Date (YYYY-MM-DD):", width=22).pack(side="left")
+        self.end_entry = ttk.Entry(row2, width=14)
+        self.end_entry.pack(side="left")
+        self.end_entry.insert(0, "2023-11-20")
+
+    def _build_csv_input(self):
+        ttk.Label(
+            self.dates_content,
+            text="Use a CSV file to run many dates at once",
+        ).pack(anchor="w", pady=(0, 6))
+
+        ttk.Separator(self.dates_content, orient="horizontal").pack(fill="x", pady=2)
+
+        ttk.Label(self.dates_content, text="CSV File Path:").pack(
+            anchor="w", pady=(4, 0)
+        )
+        row = ttk.Frame(self.dates_content)
+        row.pack(fill="x", pady=2)
+        self.csv_entry = ttk.Entry(row)
+        self.csv_entry.pack(side="left", fill="x", expand=True, padx=(0, 4))
+        ttk.Button(row, text="Browse…", command=self._browse_csv).pack(side="left")
+
+    # ------------------------------------------------------------------
+    # Scope / Streamflow helpers
+    # ------------------------------------------------------------------
+    def _on_scope_change(self, *_):
+        scope = self.scope_var.get()
+        if scope == "Custom Polygon":
+            self.custom_frame.pack(
+                fill="x",
+                pady=4,
+                after=self.root.nametowidget(str(self.scope_menu.master)),
+            )
+        else:
+            self.custom_frame.pack_forget()
+
+    def _on_streamflow_toggle(self):
         on = self.streamflow_var.get()
         self.usgs_var.set(on)
         self.nwm_var.set(on)
-        state = "normal" if on else "disabled"
-        self.chk_usgs.configure(state=state)
-        self.chk_nwm.configure(state=state)
 
-    def _add_date(self):
-        try:
-            d = datetime.strptime(self.date_entry.get().strip(), "%Y-%m-%d")
-        except ValueError:
-            messagebox.showerror("Invalid Date", "Use YYYY-MM-DD format.")
-            return
-        if d not in self.date_list:
-            self.date_list.append(d)
-            self.date_list.sort()
-            self._refresh_listbox()
-        self.batch_mode_var.set(False)
-        self._toggle_batch_mode()
+    def _browse_shapefile(self):
+        path = filedialog.askopenfilename(
+            title="Select Watershed Shapefile",
+            filetypes=[
+                ("Shapefile", "*.shp"),
+                ("GeoJSON", "*.geojson"),
+                ("All", "*.*"),
+            ],
+        )
+        if path:
+            self.custom_path_entry.delete(0, tk.END)
+            self.custom_path_entry.insert(0, path)
+            self.custom_polygon_path = path
 
-    def _clear_dates(self):
-        self.date_list.clear()
-        self._refresh_listbox()
-
-    def _refresh_listbox(self):
-        self.date_listbox.delete(0, tk.END)
-        for d in self.date_list:
-            self.date_listbox.insert(tk.END, d.strftime("%Y-%m-%d"))
-
-    def _load_csv(self):
+    def _browse_csv(self):
         path = filedialog.askopenfilename(
             title="Select CSV of dates",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            filetypes=[("CSV", "*.csv"), ("All", "*.*")],
         )
-        if not path:
-            return
-        added = 0
-        try:
-            with open(path, newline="", encoding="utf-8-sig") as fh:
-                reader = csv.reader(fh)
-                for row in reader:
-                    if not row:
-                        continue
-                    # accept first column that looks like a date
-                    for cell in row:
-                        cell = cell.strip()
-                        try:
-                            d = datetime.strptime(cell, "%Y-%m-%d")
-                            if d not in self.date_list:
-                                self.date_list.append(d)
-                                added += 1
-                            break
-                        except ValueError:
-                            continue
-            self.date_list.sort()
-            self._refresh_listbox()
-            self.batch_mode_var.set(False)
-            self._toggle_batch_mode()
-            self.status_var.set(f"Loaded {added} date(s) from CSV")
-        except Exception as e:
-            messagebox.showerror("CSV Error", str(e))
+        if path:
+            self.csv_entry.delete(0, tk.END)
+            self.csv_entry.insert(0, path)
 
     def _open_help(self):
-        # Official technical / user guide
         webbrowser.open("http://dx.doi.org/10.21079/11681/49835")
 
     # ------------------------------------------------------------------
-    # Analysis selection helpers
+    # Collect dates
     # ------------------------------------------------------------------
+    def _get_dates(self):
+        dates = []
+        if self.date_mode == "unique":
+            for _, entry in self.date_entries:
+                txt = entry.get().strip()
+                if not txt:
+                    continue
+                dates.append(datetime.strptime(txt, "%Y-%m-%d"))
+        elif self.date_mode == "range":
+            start = datetime.strptime(self.start_entry.get().strip(), "%Y-%m-%d")
+            end = datetime.strptime(self.end_entry.get().strip(), "%Y-%m-%d")
+            if end < start:
+                raise ValueError("End date must be on or after start date")
+            cur = start
+            while cur <= end:
+                dates.append(cur)
+                cur += timedelta(days=1)
+        else:  # csv
+            path = self.csv_entry.get().strip()
+            if not path or not os.path.isfile(path):
+                raise ValueError("Valid CSV file path required")
+            with open(path, newline="", encoding="utf-8-sig") as fh:
+                reader = csv.reader(fh)
+                for row in reader:
+                    for cell in row:
+                        cell = cell.strip()
+                        try:
+                            dates.append(datetime.strptime(cell, "%Y-%m-%d"))
+                            break
+                        except ValueError:
+                            continue
+            dates = sorted(set(dates))
+
+        if not dates:
+            raise ValueError("No valid dates provided")
+        return dates
+
     def _selected_analysis_types(self):
-        types = []
-        # precip is always implied if either source is chosen
-        if self.precip_source.get() in ("ghcn", "gridded"):
-            types.append("precip")
+        types = ["precip"]  # always run precip
         if self.usgs_var.get():
             types.append("usgs")
         if self.nwm_var.get():
@@ -291,62 +366,34 @@ class PrecipGUI:
             types.append("pdsi")
         return types
 
-    def _get_dates(self):
-        """Return sorted list of datetime objects to process."""
-        if self.batch_mode_var.get():
-            start = datetime.strptime(self.date_entry.get().strip(), "%Y-%m-%d")
-            end = datetime.strptime(self.end_date_entry.get().strip(), "%Y-%m-%d")
-            if end < start:
-                raise ValueError("End date must be on or after start date.")
-            dates = []
-            cur = start
-            while cur <= end:
-                dates.append(cur)
-                cur += timedelta(days=1)
-            return dates
-
-        if self.date_list:
-            return list(self.date_list)
-
-        # single date from the entry box
-        return [datetime.strptime(self.date_entry.get().strip(), "%Y-%m-%d")]
-
     # ------------------------------------------------------------------
-    # Run
+    # Calculate
     # ------------------------------------------------------------------
     def run_btn_clicked(self):
         try:
             lat = float(self.lat_entry.get().strip())
             lon = float(self.lon_entry.get().strip())
-            analysis_types = self._selected_analysis_types()
-            if not analysis_types:
-                messagebox.showwarning(
-                    "No Analysis Selected",
-                    "Please select at least one analysis type to run.",
-                )
-                return
-
-            is_huc = self.aoi_mode.get() == "huc"
             dates = self._get_dates()
+            analysis_types = self._selected_analysis_types()
+            scope = self.scope_var.get()
 
-            self.run_btn.config(state="disabled")
+            self.calc_btn.config(state="disabled")
             self.status_var.set("Queuing analyses…")
             self.root.update_idletasks()
 
-            if is_huc:
-                # HUC path – single date only for now (matches current engine)
+            is_huc = scope in ("HUC12", "HUC10", "HUC8")
+            is_custom = scope == "Custom Polygon"
+
+            if is_huc or is_custom:
+                # HUC / custom currently single-date in the engine
                 if len(dates) > 1:
-                    messagebox.showwarning(
-                        "HUC Mode",
-                        "HUC watershed analysis currently uses the first date only.\n"
-                        "Clear the date list or turn off Date Range for multi-date HUC runs.",
+                    messagebox.showinfo(
+                        "Note",
+                        "Watershed modes currently use the first date only.\n"
+                        "For multi-date watershed runs, use Single Point + date list/range.",
                     )
                 analysis_date = dates[0]
-                try:
-                    huc_level = int(self.huc_level_entry.get().strip() or "8")
-                except ValueError:
-                    messagebox.showerror("Error", "HUC level must be an integer 2–12.")
-                    return
+                huc_level = {"HUC12": 12, "HUC10": 10, "HUC8": 8}.get(scope, 8)
 
                 msg = {
                     "message_type": "huc_analysis",
@@ -358,63 +405,64 @@ class PrecipGUI:
                     "huc_level": huc_level,
                     "analysis_types": analysis_types,
                 }
-                if self.precip_source.get() == "gridded":
+                if self.gridded_var.get():
                     msg["gridded"] = True
+                if is_custom and self.custom_polygon_path:
+                    msg["custom_polygon"] = self.custom_polygon_path
+                    msg["custom_name"] = (
+                        self.custom_name_entry.get().strip() or "CUSTOM"
+                    )
                 self.dispatcher.notify(msg)
-                self.status_var.set(f"HUC analysis queued (level {huc_level})")
-                return
-
-            # Point / multi-date path
-            for current_date in dates:
-                bulk = {
-                    "lat": lat,
-                    "lon": lon,
-                    "analysis_date": current_date,
-                    "output_dir": "output",
-                    "data_dir": "data",
-                }
-
-                if "precip" in analysis_types:
-                    msg = {"message_type": "precip_analysis", **bulk}
-                    if self.precip_source.get() == "gridded":
-                        msg["gridded"] = True
-                    self.dispatcher.notify(msg)
-
-                if "usgs" in analysis_types:
-                    self.dispatcher.notify({"message_type": "usgs_analysis", **bulk})
-
-                if "nwm" in analysis_types:
-                    self.dispatcher.notify({"message_type": "nwm_analysis", **bulk})
-
-                if "wimp" in analysis_types:
-                    self.dispatcher.notify({"message_type": "wimp_analysis", **bulk})
-
-                if "pdsi" in analysis_types:
-                    self.dispatcher.notify({"message_type": "pdsi_analysis", **bulk})
-
-                self.dispatcher.notify({"message_type": "generate_pdf", **bulk})
-
-            # merge when more than one date
-            if len(dates) > 1:
-                self.dispatcher.notify(
-                    {
-                        "message_type": "merge_pdfs",
+                self.status_var.set(f"Watershed analysis queued ({scope})")
+            else:
+                # Single Point – full multi-date support
+                for current_date in dates:
+                    bulk = {
                         "lat": lat,
                         "lon": lon,
-                        "start_date": dates[0],
-                        "end_date": dates[-1],
+                        "analysis_date": current_date,
                         "output_dir": "output",
+                        "data_dir": "data",
                     }
-                )
+                    if "precip" in analysis_types:
+                        msg = {"message_type": "precip_analysis", **bulk}
+                        if self.gridded_var.get():
+                            msg["gridded"] = True
+                        self.dispatcher.notify(msg)
+                    if "usgs" in analysis_types:
+                        self.dispatcher.notify(
+                            {"message_type": "usgs_analysis", **bulk}
+                        )
+                    if "nwm" in analysis_types:
+                        self.dispatcher.notify({"message_type": "nwm_analysis", **bulk})
+                    if "wimp" in analysis_types:
+                        self.dispatcher.notify(
+                            {"message_type": "wimp_analysis", **bulk}
+                        )
+                    if "pdsi" in analysis_types:
+                        self.dispatcher.notify(
+                            {"message_type": "pdsi_analysis", **bulk}
+                        )
+                    self.dispatcher.notify({"message_type": "generate_pdf", **bulk})
 
-            n = len(dates)
-            self.status_var.set(f"Queued {n} date(s) – see console / logs for progress")
+                if len(dates) > 1:
+                    self.dispatcher.notify(
+                        {
+                            "message_type": "merge_pdfs",
+                            "lat": lat,
+                            "lon": lon,
+                            "start_date": dates[0],
+                            "end_date": dates[-1],
+                            "output_dir": "output",
+                        }
+                    )
+                self.status_var.set(f"Queued {len(dates)} date(s) – check console/logs")
 
         except ValueError as e:
             messagebox.showerror("Input Error", str(e))
-            self.status_var.set("Ready")
         except Exception as e:
             messagebox.showerror("Error", str(e))
             self.status_var.set("Error")
         finally:
-            self.run_btn.config(state="normal")
+            self.status_var.set("Ready for Input")
+            self.calc_btn.config(state="normal")
