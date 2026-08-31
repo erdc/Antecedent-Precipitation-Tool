@@ -25,6 +25,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import geopandas as gpd
 import requests
+from config import get_base_url
 from shapely.geometry import Point, shape
 from shapely.ops import unary_union
 
@@ -100,10 +101,7 @@ def download_and_cache_huc2(huc2_code: str, data_dir: str) -> str:
         logger.debug("Using cached HU2 dataset: %s", local_zip_path)
         return local_zip_path
 
-    url = (
-        "https://prd-tnm.s3.amazonaws.com/StagedProducts/Hydrography/WBD/HU2/Shape/"
-        f"{zip_filename}"
-    )
+    url = f"{get_base_url('wbd_hu2_shape')}/" f"{zip_filename}"
     logger.info("Downloading HU2 dataset from USGS: %s", url)
 
     response = requests.get(url, stream=True, timeout=60)

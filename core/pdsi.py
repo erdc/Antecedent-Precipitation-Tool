@@ -9,6 +9,7 @@ import geopandas as gpd
 import pandas as pd
 from shapely.geometry import Point
 import requests
+from config import get_base_url
 
 # Setup detailed logging to see the script's actions
 if __name__ == "__main__":
@@ -20,9 +21,7 @@ if __name__ == "__main__":
 logger = logging.getLogger(__name__)
 
 # Constants for NOAA data fetching
-BASE_URL = (
-    "https://www.ncei.noaa.gov/monitoring-content/data/us/climdiv/monthly/current"
-)
+BASE_URL = get_base_url("pdsi_base")
 MIN_FILE_SIZE = 4_000_000  # 4MB rough size check for a valid pdsidv file
 
 

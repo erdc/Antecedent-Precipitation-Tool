@@ -13,6 +13,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import requests
+from config import get_base_url
 import fsspec
 import xarray as xr
 import netCDF4
@@ -165,7 +166,7 @@ def download_nwm_flow(date: datetime, STUSPS: str, cache_dir: str) -> int:
     if os.path.exists(nc_filepath):
         return 0
 
-    base_url = f"https://storage.googleapis.com/national-water-model/nwm.{date_str}/analysis_assim"
+    base_url = f"{get_base_url('nwm_analysis_assim')}/nwm.{date_str}/analysis_assim"
     if STUSPS == "CONUS":
         file_name = "/nwm.t00z.analysis_assim.channel_rt.tm02.conus.nc"
     elif STUSPS == "HI":
@@ -302,10 +303,10 @@ def download_nwm_historic(
     Runs in a subprocess so it can be killed on timeout.
     """
     uri_dict = {
-        "CONUS": "s3://noaa-nwm-retrospective-3-0-pds/CONUS/zarr/chrtout.zarr",
-        "AK": "s3://noaa-nwm-retrospective-3-0-pds/Alaska/zarr/chrtout.zarr",
-        "HI": "s3://noaa-nwm-retrospective-3-0-pds/Hawaii/zarr/chrtout.zarr",
-        "PR": "s3://noaa-nwm-retrospective-3-0-pds/PR/zarr/chrtout.zarr",
+        "CONUS": get_base_url("nwm_retro_conus"),
+        "AK": get_base_url("nwm_retro_ak"),
+        "HI": get_base_url("nwm_retro_hi"),
+        "PR": get_base_url("nwm_retro_pr"),
     }
     nwm_uri = uri_dict.get(STUSPS)
     if nwm_uri is None:
@@ -371,28 +372,28 @@ def write_nwm_kml(
         p = kml.newpoint(name=str(comid), coords=[loc], description=desc)
         if perc > 90:
             p.style.iconstyle.icon.href = (
-                "http://maps.google.com/mapfiles/kml/paddle/blu-blank.png"
+                f"{get_base_url('google_maps_kml_paddle')}/blu-blank.png"
             )
         elif perc > 75:
             p.style.iconstyle.icon.href = (
-                "http://maps.google.com/mapfiles/kml/paddle/ltblu-blank.png"
+                f"{get_base_url('google_maps_kml_paddle')}/ltblu-blank.png"
             )
         elif perc >= 25:
             p.style.iconstyle.icon.href = (
-                "http://maps.google.com/mapfiles/kml/paddle/grn-blank.png"
+                f"{get_base_url('google_maps_kml_paddle')}/grn-blank.png"
             )
         elif perc >= 10:
             p.style.iconstyle.icon.href = (
-                "http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png"
+                f"{get_base_url('google_maps_kml_paddle')}/ylw-blank.png"
             )
         else:
             p.style.iconstyle.icon.href = (
-                "http://maps.google.com/mapfiles/kml/paddle/red-blank.png"
+                f"{get_base_url('google_maps_kml_paddle')}/red-blank.png"
             )
 
     qp = kml.newpoint(name="QUERY POINT", coords=[(lon, lat)])
     qp.style.iconstyle.icon.href = (
-        "http://maps.google.com/mapfiles/kml/paddle/purple-stars.png"
+        f"{get_base_url('google_maps_kml_paddle')}/purple-stars.png"
     )
 
     path = os.path.join(output_dir, f"NWM_STATS_{date_obj.date()}.kml")

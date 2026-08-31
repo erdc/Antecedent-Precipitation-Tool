@@ -12,9 +12,10 @@ import webbrowser
 
 
 class PrecipGUI:
-    def __init__(self, root, dispatcher):
+    def __init__(self, root, dispatcher, data_dir="data"):
         self.root = root
         self.dispatcher = dispatcher
+        self.data_dir = data_dir
 
         self.root.title("Antecedent Precipitation Tool")
         self.root.geometry("520x620")
@@ -312,7 +313,9 @@ class PrecipGUI:
             self.csv_entry.insert(0, path)
 
     def _open_help(self):
-        webbrowser.open("http://dx.doi.org/10.21079/11681/49835")
+        webbrowser.open(
+            "https://github.com/erdc/Antecedent-Precipitation-Tool/wiki/APT-v3-help.txt"
+        )
 
     # ------------------------------------------------------------------
     # Collect dates
@@ -401,7 +404,7 @@ class PrecipGUI:
                     "lon": lon,
                     "analysis_date": analysis_date,
                     "output_dir": "output",
-                    "data_dir": "data",
+                    "data_dir": self.data_dir,
                     "huc_level": huc_level,
                     "analysis_types": analysis_types,
                 }
@@ -421,7 +424,7 @@ class PrecipGUI:
                         "lon": lon,
                         "analysis_date": current_date,
                         "output_dir": "output",
-                        "data_dir": "data",
+                        "data_dir": self.data_dir,
                     }
                     if "precip" in analysis_types:
                         msg = {"message_type": "precip_analysis", **bulk}

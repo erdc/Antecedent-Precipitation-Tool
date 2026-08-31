@@ -46,6 +46,22 @@ def _coord_str(lat: float, lon: float) -> str:
     return f"{float(lat):.{COORD_DECIMALS}f}_{float(lon):.{COORD_DECIMALS}f}"
 
 
+def _as_rgb(c, default=(1.0, 1.0, 1.0)):
+    """Force a matplotlib-safe RGB(A) tuple of length 3 or 4."""
+    if c is None:
+        return default
+    try:
+        if isinstance(c, (list, tuple)):
+            t = tuple(float(x) for x in c)
+        else:
+            t = tuple(c) if hasattr(c, "__iter__") else default
+        if len(t) in (3, 4) and all(0.0 <= x <= 1.0 for x in t[:3]):
+            return t
+    except (TypeError, ValueError):
+        pass
+    return default
+
+
 def _get_data_path(
     output_dir: str, lat: float, lon: float, date: datetime, suffix: str
 ) -> str:
@@ -569,7 +585,7 @@ def _plot_precip_page(
             else f"{palmer_value} ({palmer_class})"
         )
         desc_vals.append(["Drought Index (PDSI)", display_text])
-        color_tuple = tuple(palmer_color) if palmer_color else white
+        color_tuple = _as_rgb(palmer_color, white)
         desc_colors.append([light_grey, color_tuple])
 
     usgs_condition = usgs_data.get("usgs_condition")

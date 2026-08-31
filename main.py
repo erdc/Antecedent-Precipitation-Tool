@@ -6,7 +6,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 
 from gui import PrecipGUI
-from config import load_manifest
+from config import load_manifest, find_data_dir
 from adapters.precip_adapter import PrecipAdapter
 from adapters.plotter_adapter import PlotterAdapter
 from adapters.usgs_adapter import UsgsAdapter
@@ -62,9 +62,12 @@ def setup_logging():
 
 
 if __name__ == "__main__":
+    # system level setup
     setup_logging()
     load_manifest()
+    data_dir = find_data_dir()
 
+    # load core modules
     dispatcher = EventDispatcher()
 
     PrecipAdapter().register_handlers(dispatcher)
@@ -75,6 +78,7 @@ if __name__ == "__main__":
     PdsiAdapter().register_handlers(dispatcher)
     AreaAdapter().register_handlers(dispatcher)
 
+    # start gui
     root = tk.Tk()
     app = PrecipGUI(root, dispatcher)
     root.mainloop()

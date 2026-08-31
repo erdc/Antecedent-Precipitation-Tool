@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 import geopandas as gpd
 import pandas as pd
 import requests
+from config import get_base_url
 from geopy.distance import great_circle
 from shapely.geometry import Point
 
@@ -50,7 +51,7 @@ def get_special_region(lat: float, lon: float, shapefile_path: str):
 
 def download_usgs_flow(gage_id: str, start_date: str, end_date: str) -> pd.DataFrame:
     """Download daily streamflow (discharge) from USGS."""
-    url = "https://waterservices.usgs.gov/nwis/dv"
+    url = get_base_url("usgs_nwis_dv")
     params = {
         "format": "rdb",
         "sites": gage_id,
@@ -128,7 +129,7 @@ def get_local_gages(
 
 def _get_region_gages(stusps: str, date_str: str) -> pd.DataFrame:
     """Helper to get gages for non-CONUS regions."""
-    url = "https://waterservices.usgs.gov/nwis/site"
+    url = get_base_url("usgs_nwis_site")
     start_date = (
         datetime.strptime(date_str, "%Y-%m-%d") - timedelta(days=30 * 365)
     ).strftime("%Y-%m-%d")
@@ -204,28 +205,28 @@ def write_usgs_kml(
         p = kml.newpoint(name=gage_id, coords=[loc], description=desc)
         if perc > 90:
             p.style.iconstyle.icon.href = (
-                "http://maps.google.com/mapfiles/kml/paddle/blu-blank.png"
+                f"{get_base_url('google_maps_kml_paddle')}/blu-blank.png"
             )
         elif perc > 75:
             p.style.iconstyle.icon.href = (
-                "http://maps.google.com/mapfiles/kml/paddle/ltblu-blank.png"
+                f"{get_base_url('google_maps_kml_paddle')}/ltblu-blank.png"
             )
         elif perc >= 25:
             p.style.iconstyle.icon.href = (
-                "http://maps.google.com/mapfiles/kml/paddle/grn-blank.png"
+                f"{get_base_url('google_maps_kml_paddle')}/grn-blank.png"
             )
         elif perc >= 10:
             p.style.iconstyle.icon.href = (
-                "http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png"
+                f"{get_base_url('google_maps_kml_paddle')}/ylw-blank.png"
             )
         else:
             p.style.iconstyle.icon.href = (
-                "http://maps.google.com/mapfiles/kml/paddle/red-blank.png"
+                f"{get_base_url('google_maps_kml_paddle')}/red-blank.png"
             )
 
     qp = kml.newpoint(name="QUERY POINT", coords=[(lon, lat)])
     qp.style.iconstyle.icon.href = (
-        "http://maps.google.com/mapfiles/kml/paddle/purple-stars.png"
+        f"{get_base_url('google_maps_kml_paddle')}/purple-stars.png"
     )
 
     path = os.path.join(output_dir, f"USGS_STATS_{date_obj.date()}.kml")
