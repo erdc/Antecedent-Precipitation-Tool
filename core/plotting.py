@@ -14,7 +14,6 @@ from typing import Any, Dict
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-import matplotlib.colors as mcolors
 import numpy as np
 import pandas as pd
 from matplotlib import rcParams
@@ -187,23 +186,27 @@ def _load_json_if_exists(path: str) -> Dict:
 
 
 def generate_daily_pdf(
-    lat: float, lon: float, analysis_date: datetime, output_dir: str
+    lat: float,
+    lon: float,
+    analysis_date: datetime,
+    output_dir: str,
+    data_dir: str = "data",
 ):
     """Generate a single daily PDF report. Pages in order: precip → streamflow."""
     coord_str = _coord_str(lat, lon)
     pdf_dir = os.path.join(output_dir, coord_str)
-    data_dir = os.path.join(pdf_dir, "data")
+    data_path = os.path.join(pdf_dir, "data")  # per-point stored JSON
     os.makedirs(pdf_dir, exist_ok=True)
 
     date_str = analysis_date.strftime("%Y-%m-%d")
     pdf_path = os.path.join(pdf_dir, f"{date_str}.pdf")
 
-    pdsi_data = _load_json_if_exists(os.path.join(data_dir, f"{date_str}-PDSI.json"))
-    usgs_data = _load_json_if_exists(os.path.join(data_dir, f"{date_str}-USGS.json"))
-    nwm_data = _load_json_if_exists(os.path.join(data_dir, f"{date_str}-NWM.json"))
-    wimp_data = _load_json_if_exists(os.path.join(data_dir, f"{date_str}-WIMP.json"))
+    pdsi_data = _load_json_if_exists(os.path.join(data_path, f"{date_str}-PDSI.json"))
+    usgs_data = _load_json_if_exists(os.path.join(data_path, f"{date_str}-USGS.json"))
+    nwm_data = _load_json_if_exists(os.path.join(data_path, f"{date_str}-NWM.json"))
+    wimp_data = _load_json_if_exists(os.path.join(data_path, f"{date_str}-WIMP.json"))
 
-    search_pattern = os.path.join(data_dir, f"{date_str}-*.json")
+    search_pattern = os.path.join(data_path, f"{date_str}-*.json")
     json_files = glob.glob(search_pattern)
     precip_files = [
         f
@@ -224,7 +227,13 @@ def generate_daily_pdf(
                 with open(jfile) as f:
                     precip_data = json.load(f)
                 _plot_precip_page(
-                    precip_data, pdsi_data, usgs_data, nwm_data, wimp_data, pdf
+                    precip_data,
+                    pdsi_data,
+                    usgs_data,
+                    nwm_data,
+                    wimp_data,
+                    pdf,
+                    data_dir=data_dir,
                 )
 
             # 2. Combined USGS + NWM page (if either exists)
@@ -310,6 +319,7 @@ def _plot_precip_page(
     nwm_data: Dict,
     wimp_data: Dict,
     pdf,
+    data_dir: str = "data",
 ):
     """Original precip page layout (graph + rain table + stations + description)."""
 
@@ -355,6 +365,25 @@ def _plot_precip_page(
     for ax in [ax2, ax3, ax4]:
         ax.axis("off")
         ax.axis("tight")
+
+    # Logo – use the data_dir passed from the caller (GUI / dispatcher)
+    try:
+        logo_file = os.path.join(data_dir, "RD_3_9.png")
+        logo = plt.imread(logo_file)
+
+        # Scale factor
+        scale = 1.4
+        # simple nearest-neighbor upscale with numpy
+        if scale != 1.0:
+            h, w = logo.shape[:2]
+            new_h, new_w = int(h * scale), int(w * scale)
+            y_idx = (np.arange(new_h) / scale).astype(int)
+            x_idx = (np.arange(new_w) / scale).astype(int)
+            logo = logo[y_idx][:, x_idx]
+
+        fig.figimage(X=logo, xo=150, yo=16)  # adjust xo/yo after you settle on scale
+    except Exception as e:
+        logger.warning(f"Could not load logo from {logo_file}: {e}")
 
     # ----- Main graph -----
     ax1.xaxis.set_major_locator(mdates.MonthLocator())
@@ -805,6 +834,7 @@ def generate_pdf(message: Dict[str, Any]):
         lon=message["lon"],
         analysis_date=message["analysis_date"],
         output_dir=message["output_dir"],
+        data_dir=message.get("data_dir", "data"),
     )
 
 

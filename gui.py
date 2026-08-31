@@ -378,7 +378,7 @@ class PrecipGUI:
             scope = self.scope_var.get()
 
             self.calc_btn.config(state="disabled")
-            self.status_var.set("Queuing analyses…")
+            self.status_var.set("Processing")
             self.root.update_idletasks()
 
             is_huc = scope in ("HUC12", "HUC10", "HUC8")
@@ -413,7 +413,6 @@ class PrecipGUI:
                         self.custom_name_entry.get().strip() or "CUSTOM"
                     )
                 self.dispatcher.notify(msg)
-                self.status_var.set(f"Watershed analysis queued ({scope})")
             else:
                 # Single Point – full multi-date support
                 for current_date in dates:
@@ -456,7 +455,6 @@ class PrecipGUI:
                             "output_dir": "output",
                         }
                     )
-                self.status_var.set(f"Queued {len(dates)} date(s) – check console/logs")
 
         except ValueError as e:
             messagebox.showerror("Input Error", str(e))
