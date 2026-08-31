@@ -57,19 +57,19 @@ def classify_pdsi(value: float) -> Tuple[str, str]:
 
 
 def _get_climdiv_from_point(lat: float, lon: float, shapefile_path: str) -> str | None:
-    """Find the 4-digit climate division code for a lat/lon point using local shapefile."""
-    if not os.path.exists(shapefile_path):
-        logger.error(f"Shapefile not found at {shapefile_path}")
-        return None
+    """Find the 4-digit climate division code for a lat/lon point using local shapefile or URI."""
     try:
         gdf = gpd.read_file(shapefile_path)
         logger.debug(f"Shapefile loaded. Native CRS is {gdf.crs}")
         point_gdf = gpd.GeoDataFrame(geometry=[Point(lon, lat)], crs="EPSG:4326")
+
         if gdf.crs is not None and gdf.crs != point_gdf.crs:
             logger.debug(f"Reprojecting target point from {point_gdf.crs} to {gdf.crs}")
             point_gdf = point_gdf.to_crs(gdf.crs)
+
         target_point = point_gdf.geometry.iloc[0]
         containing_poly = gdf[gdf.geometry.contains(target_point)]
+
         if not containing_poly.empty:
             raw_code = str(containing_poly.iloc[0]["CLIMDIV"])
             clean_code = raw_code.zfill(4)
@@ -82,9 +82,11 @@ def _get_climdiv_from_point(lat: float, lon: float, shapefile_path: str) -> str 
                 f"Coordinates ({lat}, {lon}) do not fall within any climate division polygon."
             )
             return None
+
     except Exception as e:
         logger.error(
-            f"Error reading shapefile or processing geometry: {e}", exc_info=True
+            f"Error reading shapefile from {shapefile_path} or processing geometry: {e}",
+            exc_info=True,
         )
         return None
 
@@ -211,25 +213,14 @@ def get_pdsi_for_location(
         f"Starting PDSI analysis for lat: {lat}, lon: {lon}, Date: {year}-{month:02d}"
     )
 
-    # --- Step 1: Find Climate Division using LOCAL shapefile ---
-    climdiv_shape_dir = Path(data_dir) / "climdiv"
-    shapefile_path = climdiv_shape_dir / "GIS.OFFICIAL_CLIM_DIVISIONS.shp"
-    zip_path = Path(data_dir) / "climdiv.zip"
+    # --- Step 1: Find Climate Division using ZIP URI ---
+    # Convert data_dir to a posix path to prevent Windows backslash issues
+    zip_path = Path(data_dir, "climdiv.zip").as_posix()
 
-    if not shapefile_path.exists():
-        if not zip_path.exists():
-            logger.error(f"Missing required file: {zip_path}")
-            return -99.99, "Not Available", "#FFFFFF"
-        try:
-            logger.info(f"Shapefile not found. Extracting {zip_path}...")
-            with zipfile.ZipFile(zip_path, "r") as zip_ref:
-                zip_ref.extractall(data_dir)
-            logger.debug("Extraction complete.")
-        except Exception as e:
-            logger.error(f"Failed to extract zip file: {e}", exc_info=True)
-            return -99.99, "Not Available", "#FFFFFF"
+    # If the shapefile is inside a "climdiv" folder inside the zip:
+    shapefile_uri = f"zip://{zip_path}!climdiv/GIS.OFFICIAL_CLIM_DIVISIONS.shp"
 
-    clim_div_code = _get_climdiv_from_point(lat, lon, str(shapefile_path))
+    clim_div_code = _get_climdiv_from_point(lat, lon, shapefile_uri)
     if not clim_div_code:
         return -99.99, "Not Available", "#FFFFFF"
 
@@ -246,6 +237,7 @@ def get_pdsi_for_location(
     value = _get_pdsi_from_file(clim_div_code, year, month, pdsi_data_file)
     classification, color = classify_pdsi(value)
     logger.info(f"Final PDSI Result: {value} -> {classification}")
+
     return value, classification, color
 
 

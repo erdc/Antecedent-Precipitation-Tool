@@ -8,6 +8,7 @@ import csv
 import io
 import logging
 import os
+from pathlib import Path
 from datetime import datetime, timedelta
 
 import geopandas as gpd
@@ -24,11 +25,13 @@ USGS_DATA_SUBDIR = "usgs_flow"
 
 def get_special_region(lat: float, lon: float, shapefile_path: str):
     """Determine if location is in CONUS or a special region (AK, HI, PR, etc.)."""
-    if not os.path.exists(shapefile_path):
-        logger.error(f"Shapefile not found: {shapefile_path}")
+    # Remove os.path.exists() and just let Geopandas try to read the URI
+    try:
+        usa_gdf = gpd.read_file(shapefile_path)
+    except Exception as e:
+        logger.error(f"Shapefile not found or failed to read: {shapefile_path} - {e}")
         return -1
 
-    usa_gdf = gpd.read_file(shapefile_path)
     point = Point(lon, lat)
 
     joined = gpd.sjoin(
@@ -90,13 +93,16 @@ def get_local_gages(
     lat: float, lon: float, date_str: str, data_dir: str, max_dist: int = 100
 ):
     """Find nearby USGS gages."""
-    shapefile_path = os.path.join(data_dir, "usa_shp", "tl_2023_us_state.shp")
-    gage_data_path = os.path.join(data_dir, "gage_data.csv")
+    # Use pathlib to join and standardize to forward slashes (.as_posix())
+    state_zip_path = Path(data_dir, "usa_shp.zip").as_posix()
+    shapefile_path = f"zip://{state_zip_path}!tl_2023_us_state.shp"
+    logger.debug(f"usa_shp zip resolved to {state_zip_path}")
 
+    gage_data_path = Path(data_dir, "gage_data.csv")
     region = get_special_region(lat, lon, shapefile_path)
 
     if region == "CONUS":
-        if not os.path.exists(gage_data_path):
+        if not gage_data_path.exists():
             logger.error(f"gage_data.csv not found in {data_dir}")
             return pd.DataFrame()
         df = pd.read_csv(gage_data_path, dtype={"GAGEID": str})
@@ -114,6 +120,7 @@ def get_local_gages(
         lambda row: great_circle((row["LatSite"], row["LonSite"]), (lat, lon)).miles,
         axis=1,
     )
+
     df = df[df["dist"] <= max_dist].copy()
     df = df.sort_values("dist").head(30)  # Top n closest
 

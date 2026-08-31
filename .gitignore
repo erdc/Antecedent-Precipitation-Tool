@@ -1,15 +1,12 @@
 /dist/
 /build/
 /cached/
-/GIS/
 /Logs/
 /Outputs/
 /__pycache__/
-/data/climdiv/
 /data/*_cache/
 *.pyc
 *.dll
-*.pickle
 *.log
 *.json
 !url_manifest.json
@@ -17,6 +14,5 @@
 *.nc
 !wimp_data.nc
 *.kml
-ula_accepted
 *historic*.csv
 *STATS*.csv

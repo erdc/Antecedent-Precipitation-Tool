@@ -43,22 +43,13 @@ class NwmAdapter:
 
             data_dir = message["data_dir"]
             cache_dir = message.get("cache_dir", os.path.join(data_dir, "nwm_cache"))
-            state_shapefile = message.get(
-                "state_shapefile",
-                os.path.join(data_dir, "usa_shp", "tl_2023_us_state.shp"),
-            )
-            comid_shapefile = message.get(
-                "comid_shapefile",
-                os.path.join(data_dir, "nwm_COMID_APTv3.0.shp"),
-            )
 
             result_df = analyze_nwm(
                 lat=message["lat"],
                 lon=message["lon"],
                 analysis_date=date_obj,
+                data_dir=data_dir,
                 cache_dir=cache_dir,
-                state_shapefile=state_shapefile,
-                comid_shapefile=comid_shapefile,
                 output_dir=message.get("output_dir"),
                 write_kml=message.get("write_kml", True),
                 write_csv=message.get("write_csv", True),

@@ -37,13 +37,14 @@ def get_special_region(
 ) -> str | int:
     """
     Return 'CONUS', a special-region code (AK/HI/PR/...), or -1 on failure.
-    state_shapefile must point to tl_2023_us_state.shp (or equivalent).
+    state_shapefile must point to tl_2023_us_state.shp (or equivalent URI).
     """
-    if not os.path.exists(state_shapefile):
-        logger.error(f"State shapefile not found: {state_shapefile}")
+    try:
+        usa_gdf = gpd.read_file(state_shapefile)
+    except Exception as e:
+        logger.error(f"Failed to read State shapefile from {state_shapefile}: {e}")
         return -1
 
-    usa_gdf = gpd.read_file(state_shapefile)
     point = Point(lon, lat)
     joined = gpd.sjoin(
         gpd.GeoDataFrame(geometry=[point], crs=usa_gdf.crs),
@@ -125,13 +126,15 @@ def find_closest_comids(
 ) -> pd.DataFrame:
     """
     Return nearby NWM reaches sorted by distance.
-    comid_shapefile must point to nwm_COMID_APTv3.0.shp (or equivalent).
+    comid_shapefile must point to nwm_COMID_APTv3.0.shp (or equivalent URI).
     """
-    if not os.path.exists(comid_shapefile):
-        raise FileNotFoundError(f"COMID shapefile not found: {comid_shapefile}")
-
     bbox = (lon - 0.5, lat - 0.5, lon + 0.5, lat + 0.5)
-    gdf = gpd.read_file(comid_shapefile, bbox=bbox)
+    try:
+        gdf = gpd.read_file(comid_shapefile, bbox=bbox)
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to read COMID shapefile from {comid_shapefile}: {e}"
+        )
 
     filtered = gdf.assign(
         dist=gdf.geometry.apply(
@@ -410,9 +413,8 @@ def analyze_nwm(
     lon: float,
     analysis_date,
     *,
+    data_dir: str,
     cache_dir: str,
-    state_shapefile: str,
-    comid_shapefile: str,
     output_dir: str | None = None,
     write_kml: bool = False,
     write_csv: bool = False,
@@ -420,33 +422,6 @@ def analyze_nwm(
 ) -> pd.DataFrame | None:
     """
     Full NWM streamflow analysis.
-
-    Parameters
-    ----------
-    lat, lon : float
-        Query location.
-    analysis_date : str | datetime
-        Date of interest (YYYY-MM-DD or datetime).
-    cache_dir : str
-        Directory for intermediate NetCDF and historic CSV caches.
-        Created if it does not exist.
-    state_shapefile : str
-        Full path to the US states shapefile (tl_2023_us_state.shp).
-    comid_shapefile : str
-        Full path to the NWM COMID shapefile (nwm_COMID_APTv3.0.shp).
-    output_dir : str | None
-        Directory for optional side products (CSV / KML).
-        Required if write_kml or write_csv is True.
-    write_kml, write_csv : bool
-        Whether to emit the corresponding side product into output_dir.
-    historic_timeout : int
-        Seconds allowed for the retrospective S3 download (default 30 min).
-
-    Returns
-    -------
-    pd.DataFrame | None
-        Sorted by distance; columns: COMID, flow_cfs, percentile, condition,
-        distance_mi.  None on hard failure.
     """
     if isinstance(analysis_date, str):
         date_obj = datetime.strptime(analysis_date, "%Y-%m-%d")
@@ -462,10 +437,19 @@ def analyze_nwm(
 
     os.makedirs(cache_dir, exist_ok=True)
 
+    # Establish Shapefile Paths / URIs based on data_dir
+    # Target the zipped shapefiles using the full zip:// URI scheme
+    state_zip_path = Path(data_dir, "usa_shp.zip").as_posix()
+    state_shapefile = f"zip://{state_zip_path}!tl_2023_us_state.shp"
+    logger.debug(f"usa_shp zip resolved to {state_zip_path}")
+
+    comid_zip_path = Path(data_dir, "COMID_points.zip").as_posix()
+    comid_shapefile = f"zip://{comid_zip_path}!nwm_COMID_APTv3.0.shp"
+
     # --- spatial lookup ---
     try:
         local_comids = find_closest_comids(comid_shapefile, lat, lon)
-    except FileNotFoundError as e:
+    except Exception as e:
         logger.error(str(e))
         return None
 
@@ -537,7 +521,7 @@ def analyze_nwm(
 
     # --- optional side products ---
     coord_str = f"{lat}_{lon}"
-    coord_dir = os.path.join(output_dir, coord_str)
+    coord_dir = os.path.join(output_dir, coord_str) if output_dir else None
 
     if write_csv and coord_dir:
         write_nwm_csv(result_df, coord_dir, date_obj)
