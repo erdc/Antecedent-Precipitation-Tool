@@ -19,8 +19,8 @@ class PrecipGUI:
         self.data_dir = data_dir
 
         self.root.title("Antecedent Precipitation Tool")
-        self.root.geometry("520x620")
-        self.root.minsize(480, 560)
+        self.root.geometry("+0+0")
+        self.root.minsize(480, 400)
         self.root.resizable(True, True)
 
         # State
