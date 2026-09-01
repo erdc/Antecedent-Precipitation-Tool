@@ -520,7 +520,7 @@ def analyze_nwm(
     result_df = pd.DataFrame(results).sort_values("distance_mi").reset_index(drop=True)
 
     # --- optional side products ---
-    coord_str = f"{lat}_{lon}"
+    coord_str = f"{float(lat):.6f}_{float(lon):.6f}"
     coord_dir = os.path.join(output_dir, coord_str) if output_dir else None
 
     if write_csv and coord_dir:

@@ -84,19 +84,33 @@ def load_manifest(manifest_path: str = None) -> dict:
     if _manifest is not None:
         return _manifest
 
-    if manifest_path is None:
-        # Unified logic: use app_root() to get the correct base directory
-        base_dir = app_root()
-        manifest_path = base_dir / "url_manifest.json"
+    candidates: List[Path] = []
+    if manifest_path is not None:
+        candidates.append(Path(manifest_path).resolve())
+    else:
+        root = app_root()
+        # 1. <app_root>/_internal/url_manifest.json (PyInstaller onedir internal folder)
+        candidates.append(root / "_internal" / "url_manifest.json")
+        # 2. <app_root>/url_manifest.json
+        candidates.append(root / "url_manifest.json")
+        # 3. ./url_manifest.json (current working directory)
+        candidates.append(Path.cwd() / "url_manifest.json")
 
-    try:
-        with open(manifest_path, "r", encoding="utf-8") as f:
-            _manifest = json.load(f)
-        print(f"Manifest loaded successfully from: {manifest_path}")
-    except Exception as e:
-        print(f"Failed to load manifest: {e}")
-        _manifest = {}
+    last_error: Optional[Exception] = None
+    for candidate in candidates:
+        try:
+            with open(candidate, "r", encoding="utf-8") as f:
+                _manifest = json.load(f)
+            print(f"Manifest loaded successfully from: {candidate}")
+            return _manifest
+        except Exception as e:
+            last_error = e
+            continue
 
+    print(
+        f"Failed to load manifest. Searched: {[str(c) for c in candidates]}. Last error: {last_error}"
+    )
+    _manifest = {}
     return _manifest
 
 

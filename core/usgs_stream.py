@@ -322,7 +322,7 @@ def analyze_usgs(
 
     # Optional side products
     if output_dir:
-        coord_str = f"{lat}_{lon}"
+        coord_str = f"{float(lat):.6f}_{float(lon):.6f}"
         coord_dir = os.path.join(output_dir, coord_str)
         if write_csv:
             write_usgs_csv(result_df, coord_dir, date_obj)

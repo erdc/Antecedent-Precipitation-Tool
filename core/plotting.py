@@ -351,9 +351,21 @@ def _plot_precip_page(
     normal_low = dict_to_series(precip_data.get("normal_low"))
     normal_high = dict_to_series(precip_data.get("normal_high"))
 
-    graph_start = datetime.strptime(precip_data["graph_start"], "%Y-%m-%d")
-    graph_end = datetime.strptime(precip_data["graph_end"], "%Y-%m-%d")
     obs_date = datetime.strptime(precip_data["obs_date"], "%Y-%m-%d")
+    graph_end = datetime.strptime(precip_data["graph_end"], "%Y-%m-%d")
+
+    # Calculate the start of the full preceding water year.
+    # A water year runs from Oct 1 to Sept 30 and is numbered by the year it ends.
+    if obs_date.month >= 10:
+        current_wy_start = datetime(obs_date.year, 10, 1)
+    else:
+        current_wy_start = datetime(obs_date.year - 1, 10, 1)
+
+    graph_start = datetime(current_wy_start.year - 1, 10, 1)
+
+    # Ensure start date is within the bounds of our data
+    if not daily_precip.empty and graph_start < daily_precip.index[0]:
+        graph_start = daily_precip.index[0]
 
     lat = precip_data["lat"]
     lon = precip_data["lon"]
@@ -389,6 +401,7 @@ def _plot_precip_page(
 
         # Scale factor
         scale = 1.4
+
         # simple nearest-neighbor upscale with numpy
         if scale != 1.0:
             h, w = logo.shape[:2]
@@ -397,25 +410,27 @@ def _plot_precip_page(
             x_idx = (np.arange(new_w) / scale).astype(int)
             logo = logo[y_idx][:, x_idx]
 
-        fig.figimage(X=logo, xo=150, yo=16)  # adjust xo/yo after you settle on scale
+        fig.figimage(X=logo, xo=150, yo=16)
     except Exception as e:
         logger.warning(f"Could not load logo from {logo_file}: {e}")
 
     # ----- Main graph -----
+    # Using major ticks for months and showing tick marks
     ax1.xaxis.set_major_locator(mdates.MonthLocator())
-    ax1.xaxis.set_minor_locator(mdates.MonthLocator(bymonthday=16))
-    ax1.xaxis.set_major_formatter(ticker.NullFormatter())
-    ax1.xaxis.set_minor_formatter(mdates.DateFormatter("%b\n%Y"))
+    ax1.xaxis.set_major_formatter(mdates.DateFormatter("%b\n%Y"))
+    ax1.xaxis.set_minor_locator(mdates.MonthLocator(bymonthday=15))
+    ax1.xaxis.set_minor_formatter(ticker.NullFormatter())
 
-    for tick in ax1.xaxis.get_minor_ticks():
-        tick.tick1line.set_markersize(0)
-        tick.tick2line.set_markersize(0)
-        tick.label1.set_horizontalalignment("center")
-
+    # Tick mark styling updated to visibly show the monthly tick marks
+    ax1.tick_params(axis="x", which="major", bottom=True, length=5, labelsize=10)
     ax1.tick_params(axis="x", which="minor", bottom=False)
+
+    for label in ax1.get_xticklabels(which="major"):
+        label.set_horizontalalignment("center")
 
     plot_daily = daily_precip[graph_start:graph_end]
     plot_rolling = rolling_total[graph_start:graph_end]
+
     plot_low = normal_low[graph_start:graph_end]
     plot_high = normal_high[graph_start:graph_end]
 
@@ -619,6 +634,7 @@ def _plot_precip_page(
             ["nClimGrid-Daily Data Used", "Yes"],
         ]
         station_colors = [[light_grey, light_grey], [white, white]]
+
         stations_table = ax4.table(
             cellText=station_table_vals,
             cellColours=station_colors,

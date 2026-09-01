@@ -107,8 +107,13 @@ def compute_rolling_precip_analysis(
         pd.date_range(graph_start, graph_end), all_days_array
     )
 
-    # === CHARTING WINDOW: Only ~93 days before + buffer after analysis_date ===
-    chart_start = analysis_date - timedelta(days=93)
+    # === CHARTING WINDOW ===
+    if analysis_date.month >= 10:
+        current_wy_start = datetime(analysis_date.year, 10, 1)
+    else:
+        current_wy_start = datetime(analysis_date.year - 1, 10, 1)
+
+    chart_start = datetime(current_wy_start.year - 1, 10, 1)  # full preceding WY
     # Small buffer after for smooth rolling window at the end
     chart_end = analysis_date + timedelta(days=15)
 

@@ -9,6 +9,7 @@ import tkinter as tk
 from datetime import datetime, timedelta
 from tkinter import filedialog, messagebox, ttk
 import webbrowser
+from config import get_base_url
 
 
 class PrecipGUI:
@@ -75,11 +76,9 @@ class PrecipGUI:
 
         self.lat_entry = ttk.Entry(loc, width=14)
         self.lat_entry.grid(row=1, column=0, sticky="w", padx=2, pady=2)
-        self.lat_entry.insert(0, "30.0")
 
         self.lon_entry = ttk.Entry(loc, width=14)
         self.lon_entry.grid(row=1, column=1, sticky="w", padx=2, pady=2)
-        self.lon_entry.insert(0, "-90.0")
 
         self.scope_var = tk.StringVar(value="Single Point")
         scope_opts = ["Single Point", "HUC12", "HUC10", "HUC8", "Custom Polygon"]
@@ -215,8 +214,6 @@ class PrecipGUI:
         ttk.Label(row, text=str(num), width=4).pack(side="left")
         entry = ttk.Entry(row, width=14)
         entry.pack(side="left", padx=8)
-        if num == 1:
-            entry.insert(0, "2023-11-11")
         self.date_entries.append((row, entry))
 
     def _remove_unique_date(self):
@@ -244,14 +241,12 @@ class PrecipGUI:
         ttk.Label(row1, text="Start Date (YYYY-MM-DD):", width=22).pack(side="left")
         self.start_entry = ttk.Entry(row1, width=14)
         self.start_entry.pack(side="left")
-        self.start_entry.insert(0, "2023-11-11")
 
         row2 = ttk.Frame(self.dates_content)
         row2.pack(fill="x", pady=4)
         ttk.Label(row2, text="End Date (YYYY-MM-DD):", width=22).pack(side="left")
         self.end_entry = ttk.Entry(row2, width=14)
         self.end_entry.pack(side="left")
-        self.end_entry.insert(0, "2023-11-20")
 
     def _build_csv_input(self):
         ttk.Label(
@@ -313,9 +308,9 @@ class PrecipGUI:
             self.csv_entry.insert(0, path)
 
     def _open_help(self):
-        webbrowser.open(
-            "https://github.com/erdc/Antecedent-Precipitation-Tool/wiki/APT-v3-help.txt"
-        )
+        help_url = get_base_url("apt_help")
+        if help_url:
+            webbrowser.open(help_url)
 
     # ------------------------------------------------------------------
     # Collect dates
