@@ -7,6 +7,9 @@ Simplified Event-Driven Engine for the APT tool.
 """
 
 import collections
+import hashlib
+import inspect
+import json
 import logging
 from traceback import format_exc
 
@@ -19,6 +22,7 @@ class EventDispatcher:
     def __init__(self):
         self._handlers = {}  # message_type -> list of callbacks
         self._message_queue = collections.deque()
+        self._seen_hashes = set()
 
     def register(self, message_type: str, callback):
         """Register a handler for a specific message type."""
@@ -26,13 +30,48 @@ class EventDispatcher:
             self._handlers[message_type] = []
         self._handlers[message_type].append(callback)
 
+    def _get_caller_module(self) -> str:
+        """Walk the stack and return the first module name outside this file."""
+        for frame_info in inspect.stack()[1:]:
+            module = inspect.getmodule(frame_info.frame)
+            if module is None:
+                continue
+            if module.__name__ != __name__:
+                return module.__name__
+        return "unknown"
+
+    def _put_message(self, message: dict, source: str = None, front: bool = False):
+        """Enqueue a message, log origin, and track content hash for duplicates.
+        Source is derived automatically from the call stack (module that raised
+        the message) when not supplied explicitly.
+        """
+        if source is None:
+            source = self._get_caller_module()
+        try:
+            msg_str = json.dumps(message, sort_keys=True, default=str)
+            msg_hash = hashlib.sha256(msg_str.encode("utf-8")).hexdigest()
+        except Exception:
+            msg_hash = str(hash(str(message)))
+        if msg_hash in self._seen_hashes:
+            logger.debug(
+                "Duplicate message hash %s already seen (source=%s, type=%s)",
+                msg_hash,
+                source,
+                message.get("message_type"),
+            )
+        else:
+            self._seen_hashes.add(msg_hash)
+        if front:
+            self._message_queue.appendleft(message)
+        else:
+            self._message_queue.append(message)
+
     def notify(self, message: dict):
         """Queue a message and process the queue."""
         if not isinstance(message, dict) or "message_type" not in message:
             logger.error("Invalid message format: missing 'message_type'")
             return
-
-        self._message_queue.append(message)
+        self._put_message(message)
         self._process_queue()
 
     def _enqueue_result(self, result):
@@ -44,11 +83,11 @@ class EventDispatcher:
         """
         if isinstance(result, dict):
             if "message_type" in result:
-                self._message_queue.appendleft(result)
+                self._put_message(result, front=True)
         elif isinstance(result, list):
             for item in reversed(result):
                 if isinstance(item, dict) and "message_type" in item:
-                    self._message_queue.appendleft(item)
+                    self._put_message(item, front=True)
 
     def _process_queue(self):
         """Process all messages in the queue."""
@@ -70,7 +109,7 @@ class EventDispatcher:
                             f"'{nested_type}' inside _followups"
                         )
                         continue
-                    self._message_queue.append(m)
+                    self._put_message(m)
                 continue
 
             handlers = self._handlers.get(msg_type, [])
