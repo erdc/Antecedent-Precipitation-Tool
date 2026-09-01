@@ -25,7 +25,6 @@ block_cipher = None
 added_files = [
     ('data', 'data'),                   # GHCN lists, WBD.zip, logos, NetCDFs, etc.
     ('url_manifest.json', '.'),         # used by config.load_manifest()
-    ('images/*', 'images'),             # Graph.ico and any other assets
     (mpl_cache_dir, 'mpl_cache'),       # AUTOMATICALLY INCLUDE MATPLOTLIB CACHE
 ]
 
@@ -125,7 +124,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='images/Graph.ico',            # relative path; works on Windows & Linux
+    icon='data/Graph.ico',
 )
 
 coll = COLLECT(

@@ -620,7 +620,7 @@ def _plot_precip_page(
 
     description_table = ax3.table(
         cellText=desc_vals,
-        colWidths=[0.42, 0.52],
+        colWidths=[0.42, 0.54],
         cellColours=desc_colors,
         loc="center left",
     )

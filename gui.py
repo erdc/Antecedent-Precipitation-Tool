@@ -23,6 +23,9 @@ class PrecipGUI:
         self.root.minsize(480, 400)
         self.root.resizable(True, True)
 
+        # Set window icon
+        self._set_window_icon()
+
         # State
         self.date_mode = "unique"  # "unique" | "range" | "csv"
         self.date_entries = []  # list of (frame, entry) for unique mode
@@ -30,6 +33,25 @@ class PrecipGUI:
 
         self._build_ui()
         self._set_date_mode("unique")
+
+    # ------------------------------------------------------------------
+    # Set window icon
+    # ------------------------------------------------------------------
+    def _set_window_icon(self):
+        """Set the application icon from data/Graph.ico"""
+        icon_path = os.path.join(self.data_dir, "Graph.ico")
+        try:
+            if os.path.exists(icon_path):
+                self.root.iconbitmap(icon_path)
+            else:
+                # Fallback: try relative path from current working directory
+                alt_path = os.path.join("data", "Graph.ico")
+                if os.path.exists(alt_path):
+                    self.root.iconbitmap(alt_path)
+                else:
+                    print(f"Warning: Icon not found at {icon_path} or {alt_path}")
+        except Exception as e:
+            print(f"Warning: Could not load icon: {e}")
 
     # ------------------------------------------------------------------
     # UI construction – mirrors official APT layout
