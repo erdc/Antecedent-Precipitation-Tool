@@ -8,9 +8,13 @@
 
 import os
 import matplotlib
+from PyInstaller.utils.hooks import collect_all
 
 # Dynamically find the matplotlib cache directory during the build
 mpl_cache_dir = matplotlib.get_cachedir()
+
+# Collect s3fs + its transitive runtime needs
+s3fs_datas, s3fs_binaries, s3fs_hiddenimports = collect_all('s3fs')
 
 block_cipher = None
 
@@ -28,8 +32,8 @@ added_files = [
 a = Analysis(
     ['main.py'],
     pathex=['.'],
-    binaries=[],
-    datas=added_files,
+    binaries=s3fs_binaries,
+    datas=added_files + s3fs_datas,
     hiddenimports=[
         # Core scientific stack
         'pandas',
@@ -43,6 +47,15 @@ a = Analysis(
         'matplotlib.backends.backend_tkagg',
         'PIL',
         'PIL.Image',
+        's3fs',
+        'fsspec',
+        'aiobotocore',
+        'botocore',
+        'boto3',
+        's3transfer',
+        'jmespath',
+        'dateutil',
+        'urllib3',
         # Geospatial
         'geopandas',
         'shapely',
@@ -83,7 +96,7 @@ a = Analysis(
         'engine',
         'gui',
         'config',
-    ],
+    ]+ s3fs_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
