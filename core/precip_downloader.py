@@ -235,11 +235,6 @@ def get_ghcn_timeseries_data(
         file_age_days = None
         FRESH_DAYS = 7  # ← skip POR check for anything this new
 
-        logger.debug(
-            f"{station_id}: found {len(existing_files)} cache file(s): "
-            f"{[os.path.basename(f) for f in existing_files]}"
-        )
-
         if existing_files:
             existing_files.sort()
             cached_file = existing_files[-1]
@@ -267,8 +262,6 @@ def get_ghcn_timeseries_data(
                 f"{station_id}: cache={os.path.basename(cached_file)} | "
                 f"age={file_age_days}d | stale={is_stale} | has_POR={has_por}"
             )
-        else:
-            logger.debug(f"{station_id}: no cache file found")
 
         needs_download = (not cached_file) or is_stale or (not has_por)
 
