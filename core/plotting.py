@@ -696,126 +696,166 @@ def _plot_precip_page(
 
 
 def _plot_streamflow_page(
-    usgs_data: Dict, nwm_data: Dict, pdsi_data: Dict, meta: Dict, pdf
+    usgs_data: Dict,
+    nwm_data: Dict,
+    pdsi_data: Dict,
+    meta: Dict,
+    pdf,
+    max_rows: int = 10,
 ):
     """
     Combined USGS + NWM page.
-    Location / date / elevation shown as a page title.
-    Two side-by-side tables + a notes panel at the bottom.
+
+    Vertical layout:
+      - USGS table (top)
+      - NWM table (middle)
+      - Methods / sources (bottom)
+
+    Args:
+        usgs_data: Stored USGS analysis payload.
+        nwm_data: Stored NWM analysis payload.
+        pdsi_data: Stored PDSI payload (currently unused here).
+        meta: Metadata used for titles/labels.
+        pdf: PdfPages handle.
+        max_rows: Maximum number of USGS gages / NWM reaches to show per table.
     """
     light_grey = (0.85, 0.85, 0.85)
     white = (1, 1, 1)
 
-    lat = meta["lat"]
-    lon = meta["lon"]
-    elev = meta["elev"]
-    obs_date = meta["obs_date"]
-
     fig = plt.figure(figsize=(17, 11), dpi=140)
     fig.set_facecolor("0.77")
 
-    # Page title (replaces the old description box)
-    title = (
-        f"Streamflow Analysis – {lat:.4f}, {lon:.4f} | {obs_date.strftime('%Y-%m-%d')}"
-    )
-    fig.suptitle(title, fontsize=16, y=0.97)
+    # Vertical layout: USGS top, NWM middle, Notes bottom
+    gs = fig.add_gridspec(3, 1, height_ratios=[1.35, 1.15, 0.70])
 
-    # Layout: USGS | NWM on top row, notes spanning bottom
-    ax_usgs = plt.subplot2grid((3, 2), (0, 0), rowspan=2)
-    ax_nwm = plt.subplot2grid((3, 2), (0, 1), rowspan=2)
-    ax_notes = plt.subplot2grid((3, 2), (2, 0), colspan=2)
+    ax_usgs = fig.add_subplot(gs[0, 0])
+    ax_nwm = fig.add_subplot(gs[1, 0])
+    ax_notes = fig.add_subplot(gs[2, 0])
 
     for ax in [ax_usgs, ax_nwm, ax_notes]:
         ax.axis("off")
         ax.axis("tight")
 
-    # ----- USGS table (top-left) -----
+    # Normalize max_rows
+    max_rows = max(1, int(max_rows))
+
+    # ----- USGS table (top) -----
     sites = (usgs_data or {}).get("usgs_sites") or []
-    usgs_vals = [["Gage Name", "ID", "Dist (mi)", "Flow (cfs)", "%ile", "Condition"]]
-    usgs_colors = [[light_grey] * 6]
-    for s in sites[:7]:
+    usgs_header = [
+        "Gage Name",
+        "ID",
+        "GagesII",
+        "Dist (mi)",
+        "Flow (cfs)",
+        "%ile",
+        "Condition",
+    ]
+    usgs_vals = [usgs_header]
+    usgs_colors = [[light_grey] * len(usgs_header)]
+
+    for s in sites[:max_rows]:
         usgs_vals.append(
             [
                 str(s.get("name", ""))[:26],
                 str(s.get("gage_id", "")),
+                "" if s.get("gagesii") is None else str(s.get("gagesii")),
                 f"{s.get('distance_mi', 0):.1f}",
                 f"{s.get('flow_cfs', 0):.1f}",
                 f"{s.get('percentile', 0):.0f}",
-                s.get("condition", ""),
+                str(s.get("condition", "")),
             ]
         )
-        usgs_colors.append([white] * 6)
+        usgs_colors.append([white] * len(usgs_header))
+
     if len(usgs_vals) == 1:
-        usgs_vals.append(["No valid USGS gages", "", "", "", "", ""])
-        usgs_colors.append([white] * 6)
+        usgs_vals.append(["No valid USGS gages", "", "", "", "", "", ""])
+        usgs_colors.append([white] * len(usgs_header))
 
     t_usgs = ax_usgs.table(
         cellText=usgs_vals,
         cellColours=usgs_colors,
-        colWidths=[0.30, 0.12, 0.12, 0.14, 0.10, 0.18],
+        colWidths=[0.26, 0.11, 0.11, 0.10, 0.12, 0.08, 0.18],
         loc="upper center",
     )
     t_usgs.auto_set_font_size(False)
     t_usgs.set_fontsize(9)
+    t_usgs.scale(1, 1.35)
+
     ax_usgs.set_title(
         f"USGS Streamflow  –  {meta.get('usgs_condition') or 'No Data'}",
         fontsize=13,
         pad=8,
     )
 
-    # ----- NWM table (top-right) -----
+    # ----- NWM table (middle) -----
     reaches = (nwm_data or {}).get("nwm_reaches") or []
-    nwm_vals = [["COMID", "Dist (mi)", "Flow (cfs)", "%ile", "Condition"]]
-    nwm_colors = [[light_grey] * 5]
-    for r in reaches[:7]:
+    nwm_header = ["COMID", "Dist (mi)", "Flow (cfs)", "%ile", "Condition"]
+    nwm_vals = [nwm_header]
+    nwm_colors = [[light_grey] * len(nwm_header)]
+
+    for r in reaches[:max_rows]:
         nwm_vals.append(
             [
                 str(r.get("COMID", "")),
                 f"{r.get('distance_mi', 0):.1f}",
                 f"{r.get('flow_cfs', 0):.1f}",
                 f"{r.get('percentile', 0):.0f}",
-                r.get("condition", ""),
+                str(r.get("condition", "")),
             ]
         )
-        nwm_colors.append([white] * 5)
+        nwm_colors.append([white] * len(nwm_header))
+
     if len(nwm_vals) == 1:
         nwm_vals.append(["No valid NWM reaches", "", "", "", ""])
-        nwm_colors.append([white] * 5)
+        nwm_colors.append([white] * len(nwm_header))
 
     t_nwm = ax_nwm.table(
         cellText=nwm_vals,
         cellColours=nwm_colors,
-        colWidths=[0.20, 0.16, 0.18, 0.12, 0.22],
+        colWidths=[0.18, 0.16, 0.18, 0.12, 0.24],
         loc="upper center",
     )
     t_nwm.auto_set_font_size(False)
     t_nwm.set_fontsize(9)
+    t_nwm.scale(1, 1.30)
+
     ax_nwm.set_title(
         f"NWM Streamflow  –  {meta.get('nwm_condition') or 'No Data'}",
         fontsize=13,
         pad=8,
     )
 
-    # ----- Notes / data sources (bottom, full width) -----
+    # ----- Methods / Sources table (bottom) -----
     note_vals = [
         ["USGS Source", "NWIS Daily Values (00060)"],
         ["USGS Method", "Same-day percentile rank vs historic record"],
+        [
+            "USGS GagesII",
+            "Ref / Non-Ref values pulled from gage_data.csv when available",
+        ],
         ["NWM Source", "Analysis-assim + retrospective (1990-2020)"],
         ["NWM Method", "Same-day percentile rank vs 1990-2020"],
     ]
-    note_colors = [[light_grey, white]] * 4
+    note_colors = [[light_grey, white] for _ in note_vals]
+
     t_notes = ax_notes.table(
         cellText=note_vals,
         cellColours=note_colors,
-        colWidths=[0.22, 0.75],
+        colWidths=[0.24, 0.72],
         loc="upper center",
     )
     t_notes.auto_set_font_size(False)
     t_notes.set_fontsize(10)
+    t_notes.scale(1, 1.20)
+
     ax_notes.set_title("Data Sources & Methods", fontsize=13, pad=8)
 
     plt.subplots_adjust(
-        wspace=0.08, hspace=0.30, left=0.04, bottom=0.06, top=0.90, right=0.97
+        hspace=0.34,
+        left=0.04,
+        bottom=0.05,
+        top=0.90,
+        right=0.97,
     )
     pdf.savefig(fig, facecolor=fig.get_facecolor())
     plt.close(fig)

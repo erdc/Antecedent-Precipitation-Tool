@@ -115,6 +115,9 @@ def get_local_gages(
     if df.empty:
         return df
 
+    if "GagesII" not in df.columns:
+        df["GagesII"] = None
+
     # Calculate distance
     df["dist"] = df.apply(
         lambda row: great_circle((row["LatSite"], row["LonSite"]), (lat, lon)).miles,
@@ -130,8 +133,9 @@ def get_local_gages(
             "GAGEID": "gage_id",
             "LatSite": "lat",
             "LonSite": "lon",
+            "GagesII": "gagesii",
         }
-    )[["name", "gage_id", "lat", "lon", "dist"]]
+    )[["name", "gage_id", "lat", "lon", "dist", "gagesii"]]
 
 
 def _get_region_gages(stusps: str, date_str: str) -> pd.DataFrame:
@@ -159,6 +163,7 @@ def _get_region_gages(stusps: str, date_str: str) -> pd.DataFrame:
                 "gage_id": row[1],
                 "LatSite": float(row[4]),
                 "LonSite": float(row[5]),
+                "GagesII": None,
             }
             for row in reader
             if row and len(row) > 5 and row[0] == "USGS" and not row[0].startswith("#")
@@ -302,6 +307,7 @@ def analyze_usgs(
             {
                 "gage_id": gage["gage_id"],
                 "name": gage["name"][:40],
+                "gagesii": gage.get("gagesii", None),
                 "distance_mi": round(gage["dist"], 2),
                 "flow_cfs": round(current_flow, 1),
                 "percentile": percentile,
