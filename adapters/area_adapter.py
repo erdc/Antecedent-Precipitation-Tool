@@ -149,7 +149,13 @@ class AreaAdapter:
 
             for analysis_type in analysis_types:
                 follow_ups.append({"message_type": f"{analysis_type}_analysis", **bulk})
-            follow_ups.append({"message_type": "generate_pdf", **bulk})
+            follow_ups.append(
+                {
+                    "message_type": "generate_pdf",
+                    "analysis_types": analysis_types,
+                    **bulk,
+                }
+            )
 
         if not generated_output_dirs:
             logger.error("No valid sample points after parsing – aborting")

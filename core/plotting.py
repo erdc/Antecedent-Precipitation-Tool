@@ -207,8 +207,15 @@ def generate_daily_pdf(
     analysis_date: datetime,
     output_dir: str,
     data_dir: str = "data",
+    analysis_types: list | None = None,
 ):
-    """Generate a single daily PDF report. Pages in order: precip → streamflow."""
+    """Generate a single daily PDF report. Pages in order: precip → streamflow.
+
+    analysis_types: optional list of requested analyses (e.g. ["precip", "usgs",
+    "nwm", "wimp", "pdsi"]). When supplied, only those analyses are considered;
+    missing requested files produce a warning and are omitted from the report.
+    When omitted, behaviour falls back to "include whatever files are present".
+    """
     coord_str = _coord_str(lat, lon)
     pdf_dir = os.path.join(output_dir, coord_str)
     data_path = os.path.join(pdf_dir, "data")  # per-point stored JSON
@@ -217,10 +224,32 @@ def generate_daily_pdf(
     date_str = analysis_date.strftime("%Y-%m-%d")
     pdf_path = os.path.join(pdf_dir, f"{date_str}.pdf")
 
-    pdsi_data = _load_json_if_exists(os.path.join(data_path, f"{date_str}-PDSI.json"))
-    usgs_data = _load_json_if_exists(os.path.join(data_path, f"{date_str}-USGS.json"))
-    nwm_data = _load_json_if_exists(os.path.join(data_path, f"{date_str}-NWM.json"))
-    wimp_data = _load_json_if_exists(os.path.join(data_path, f"{date_str}-WIMP.json"))
+    requested = set(analysis_types) if analysis_types else None
+
+    # Load only what was requested (or everything when no filter is given)
+    def _want(name: str) -> bool:
+        return requested is None or name in requested
+
+    pdsi_data = (
+        _load_json_if_exists(os.path.join(data_path, f"{date_str}-PDSI.json"))
+        if _want("pdsi")
+        else {}
+    )
+    usgs_data = (
+        _load_json_if_exists(os.path.join(data_path, f"{date_str}-USGS.json"))
+        if _want("usgs")
+        else {}
+    )
+    nwm_data = (
+        _load_json_if_exists(os.path.join(data_path, f"{date_str}-NWM.json"))
+        if _want("nwm")
+        else {}
+    )
+    wimp_data = (
+        _load_json_if_exists(os.path.join(data_path, f"{date_str}-WIMP.json"))
+        if _want("wimp")
+        else {}
+    )
 
     search_pattern = os.path.join(data_path, f"{date_str}-*.json")
     json_files = glob.glob(search_pattern)
@@ -231,6 +260,28 @@ def generate_daily_pdf(
             x in f for x in ["-PDSI.json", "-USGS.json", "-NWM.json", "-WIMP.json"]
         )
     ]
+    if not _want("precip"):
+        precip_files = []
+
+    # Warn about any requested analysis that produced no stored data
+    if requested is not None:
+        missing = []
+        if "precip" in requested and not precip_files:
+            missing.append("precip")
+        if "pdsi" in requested and not pdsi_data:
+            missing.append("pdsi")
+        if "usgs" in requested and not usgs_data:
+            missing.append("usgs")
+        if "nwm" in requested and not nwm_data:
+            missing.append("nwm")
+        if "wimp" in requested and not wimp_data:
+            missing.append("wimp")
+        if missing:
+            logger.warning(
+                "PDF for %s: requested analysis type(s) missing on disk: %s",
+                date_str,
+                ", ".join(missing),
+            )
 
     if not precip_files and not usgs_data and not nwm_data and not wimp_data:
         logger.warning(f"No data files found for {date_str}")
@@ -238,7 +289,7 @@ def generate_daily_pdf(
 
     try:
         with PdfPages(pdf_path) as pdf:
-            # 1. Precip page(s)
+            # 1. Precip page(s) – only when precip was requested / present
             for jfile in sorted(precip_files):
                 with open(jfile) as f:
                     precip_data = json.load(f)
@@ -252,7 +303,7 @@ def generate_daily_pdf(
                     data_dir=data_dir,
                 )
 
-            # 2. Combined USGS + NWM page (if either exists)
+            # 2. Combined USGS + NWM page (only if those were requested & present)
             if usgs_data or nwm_data:
                 meta = _extract_meta(
                     precip_files, usgs_data, nwm_data, lat, lon, analysis_date
@@ -900,13 +951,20 @@ def merge_daily_pdfs(
 
 
 def generate_pdf(message: Dict[str, Any]):
-    """Entry point called by adapter."""
+    """Entry point called by adapter.
+
+    Expects optional message["analysis_types"] – the list of analyses that
+    were selected for this run. When present the PDF generator will:
+      - warn if any selected type has no corresponding stored JSON, and
+      - include only the selected (and present) analyses in the report.
+    """
     generate_daily_pdf(
         lat=message["lat"],
         lon=message["lon"],
         analysis_date=message["analysis_date"],
         output_dir=message["output_dir"],
         data_dir=message.get("data_dir", "data"),
+        analysis_types=message.get("analysis_types"),
     )
 
 

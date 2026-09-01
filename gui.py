@@ -462,7 +462,13 @@ class PrecipGUI:
                         self.dispatcher.notify(
                             {"message_type": "pdsi_analysis", **bulk}
                         )
-                    self.dispatcher.notify({"message_type": "generate_pdf", **bulk})
+                    self.dispatcher.notify(
+                        {
+                            "message_type": "generate_pdf",
+                            "analysis_types": analysis_types,
+                            **bulk,
+                        }
+                    )
 
                 if len(dates) > 1:
                     self.dispatcher.notify(
