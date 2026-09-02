@@ -189,6 +189,51 @@ def _plot_precip_page(
     )
     ax1.set_ylim(ymin=0, ymax=y_max_val)
     ax1.set_xlim([pd.Timestamp(graph_start), pd.Timestamp(graph_end)])
+
+    # Graph annotation section
+    date_range_days = (graph_end - graph_start).days
+    for days_prior in [0, 30, 60]:
+        arrow_date = obs_date - timedelta(days=days_prior)
+        if not (graph_start <= arrow_date <= graph_end):
+            continue
+
+        y_value = rolling_total.get(arrow_date)
+        if y_value is not None and pd.notna(y_value):
+            # Determine vertical position
+            vertical_offset = -30 if y_value > y_max_val * 0.85 else 30
+
+            # Determine horizontal position based on date location
+            days_from_start = (arrow_date - graph_start).days
+            position_ratio = (
+                days_from_start / date_range_days if date_range_days > 0 else 0.5
+            )
+
+            if position_ratio < 0.2:  # Left side of graph
+                horizontal_align = "left"
+                horizontal_offset = 15
+            elif position_ratio > 0.8:  # Right side of graph
+                horizontal_align = "right"
+                horizontal_offset = -15
+            else:  # Center
+                horizontal_align = "center"
+                horizontal_offset = 0
+
+            ax1.annotate(
+                arrow_date.strftime("%Y-%m-%d"),
+                xy=(arrow_date, y_value),
+                xycoords="data",
+                xytext=(horizontal_offset, vertical_offset),
+                textcoords="offset points",
+                ha=horizontal_align,
+                size=13,
+                arrowprops=dict(
+                    arrowstyle="simple",
+                    fc="0.4",
+                    ec="none",
+                    connectionstyle=f"arc3,rad={-0.3 if horizontal_offset < 0 else 0.3}",
+                ),
+            )
+
     ax1.legend(loc="upper right")
     ax1.set_ylabel("Rainfall (Inches)", fontsize=20)
     title = (
