@@ -157,6 +157,7 @@ def _plot_precip_page(
     # Main graph (ax1)
     ax1.xaxis.set_major_locator(mdates.MonthLocator())
     ax1.xaxis.set_major_formatter(mdates.DateFormatter("%b\n%Y"))
+    ax1.tick_params(axis="x", which="major", colors="black")
     ax1.plot(
         daily_precip[graph_start:graph_end].index,
         daily_precip[graph_start:graph_end].values,
@@ -180,6 +181,7 @@ def _plot_precip_page(
         label="30-Year Normal Range",
         alpha=0.5,
     )
+    ax1.grid(True, which="major", axis="x", linestyle="-", color="lightgrey", zorder=0)
     y_max_val = (
         max(
             rolling_total[graph_start:graph_end].max(),
