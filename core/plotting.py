@@ -38,6 +38,85 @@ class NpEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
+# ====================== UTILITY FUNCTIONS ======================
+
+
+def dict_to_series(d):
+    """Converts a dictionary with date strings as keys to a pandas Series."""
+    if not d:
+        return pd.Series(dtype=float)
+    s = pd.Series(d)
+    s.index = pd.to_datetime(s.index)
+    return s
+
+
+def _compute_precip_condition(precip_data: Dict) -> (str, int):
+    """Recomputes the wetness result string and score from stored series."""
+
+    rolling_total = dict_to_series(precip_data.get("rolling_total"))
+    normal_low = dict_to_series(precip_data.get("normal_low"))
+    normal_high = dict_to_series(precip_data.get("normal_high"))
+
+    if "obs_date" not in precip_data or not precip_data["obs_date"]:
+        return "Error", 0
+
+    obs_date = datetime.strptime(precip_data["obs_date"], "%Y-%m-%d")
+
+    total_score = 0
+    for days_prior, weight in [(0, 3), (30, 2), (60, 1)]:
+        p_date = obs_date - timedelta(days=days_prior)
+
+        obs_val = rolling_total.get(p_date)
+        low_val = normal_low.get(p_date)
+        high_val = normal_high.get(p_date)
+
+        if any(pd.isna(v) or v is None for v in [obs_val, low_val, high_val]):
+            c_val = 0
+        elif obs_val > high_val:
+            c_val = 3
+        elif obs_val < low_val:
+            c_val = 1
+        else:
+            c_val = 2
+        total_score += c_val * weight
+
+    if total_score < 10:
+        condition = "Drier than Normal"
+    elif total_score <= 14:
+        condition = "Normal Conditions"
+    else:
+        condition = "Wetter than Normal"
+
+    return condition, total_score
+
+
+def _write_merged_stations_csv(precip_df: pd.DataFrame, output_dir: str, date_str: str):
+    """
+    Writes the merged station data to two CSV files: one in 10*mm and one in inches.
+    """
+    if precip_df.empty:
+        return
+
+    df = precip_df.reset_index()
+    df.columns = ["Date", "precip_10mm"]
+    df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
+
+    csv_path_mm = os.path.join(output_dir, f"merged_stations_{date_str}.csv")
+    df.to_csv(csv_path_mm, index=False)
+    logger.info(f"Wrote merged stations CSV: {csv_path_mm}")
+
+    df_in = df.copy()
+    df_in["precip_in"] = df_in["precip_10mm"] / 254.0
+    df_in = df_in[["Date", "precip_in"]]
+    df_in.columns = ["Date", "PrecipitationInches"]
+
+    csv_path_in = os.path.join(
+        output_dir, f"merged_stations_converted_to_in_{date_str}.csv"
+    )
+    df_in.to_csv(csv_path_in, index=False)
+    logger.info(f"Wrote merged stations (inches) CSV: {csv_path_in}")
+
+
 # ====================== DATA STORAGE ======================
 
 
@@ -73,16 +152,14 @@ def _get_data_path(
 
 
 def store_precip_data(data: Dict[str, Any]):
-    """Store precipitation analysis results as JSON."""
+    """Store precipitation analysis results as JSON and CSV."""
     lat = data["lat"]
     lon = data["lon"]
     obs_date = data["obs_date"]
 
-    # Determine suffix
     stations = data.get("local_stations_info", [])
-    suffix = "Gridded" if (stations and stations[0].get("id") == "GRIDDED") else "GHCN"
-
-    path = _get_data_path(data["output_dir"], lat, lon, obs_date, suffix)
+    is_gridded = stations and stations[0].get("id") == "GRIDDED"
+    suffix = "Gridded" if is_gridded else "GHCN"
 
     def series_to_dict(s):
         if s is None or (isinstance(s, pd.Series) and s.empty):
@@ -115,9 +192,27 @@ def store_precip_data(data: Dict[str, Any]):
         "data_source": data.get("data_source"),
     }
 
+    # Calculate score and condition and add them to the payload before saving
+    condition, score = _compute_precip_condition(payload)
+    payload["antecedent_score_summary"] = {"total_score": score, "condition": condition}
+
+    if not is_gridded:
+        daily_precip_series = data.get("daily_precip")
+        if daily_precip_series is not None and not daily_precip_series.empty:
+            coord_str = _coord_str(lat, lon)
+            station_data_dir = os.path.join(
+                data["output_dir"], coord_str, "Station Data"
+            )
+            os.makedirs(station_data_dir, exist_ok=True)
+
+            precip_df = daily_precip_series.to_frame()
+            _write_merged_stations_csv(
+                precip_df, station_data_dir, obs_date.strftime("%Y-%m-%d")
+            )
+
+    path = _get_data_path(data["output_dir"], lat, lon, obs_date, suffix)
     with open(path, "w") as f:
         json.dump(payload, f, indent=4, cls=NpEncoder)
-
     logger.info(f"Stored precip data: {path}")
 
 
@@ -283,7 +378,7 @@ def generate_daily_pdf(
                 ", ".join(missing),
             )
 
-    if not precip_files and not usgs_data and not nwm_data and not wimp_data:
+    if not any([precip_files, usgs_data, nwm_data, wimp_data]):
         logger.warning(f"No data files found for {date_str}")
         return
 
@@ -315,48 +410,6 @@ def generate_daily_pdf(
         logger.error(f"Failed to generate PDF for {date_str}", exc_info=True)
 
 
-def _compute_precip_condition(precip_data: Dict) -> str:
-    """Recompute the wetness result string from stored series (same logic as plot)."""
-
-    def dict_to_series(d):
-        if not d:
-            return pd.Series(dtype=float)
-        s = pd.Series(d)
-        s.index = pd.to_datetime(s.index)
-        return s
-
-    rolling_total = dict_to_series(precip_data.get("rolling_total"))
-    normal_low = dict_to_series(precip_data.get("normal_low"))
-    normal_high = dict_to_series(precip_data.get("normal_high"))
-    obs_date = datetime.strptime(precip_data["obs_date"], "%Y-%m-%d")
-
-    total_score = 0
-    for days_prior, weight in [(0, 3), (30, 2), (60, 1)]:
-        p_date = obs_date - timedelta(days=days_prior)
-        date_str_val = p_date.strftime("%Y-%m-%d")
-        try:
-            obs_val = rolling_total.get(date_str_val)
-            low_val = normal_low.get(date_str_val)
-            high_val = normal_high.get(date_str_val)
-            if any(pd.isna(v) for v in [obs_val, low_val, high_val]):
-                c_val = 0
-            elif obs_val > high_val:
-                c_val = 3
-            elif obs_val < low_val:
-                c_val = 1
-            else:
-                c_val = 2
-            total_score += c_val * weight
-        except (KeyError, TypeError):
-            pass
-
-    if total_score < 10:
-        return f"Drier than Normal ({total_score})"
-    if total_score <= 14:
-        return f"Normal Conditions ({total_score})"
-    return f"Wetter than Normal ({total_score})"
-
-
 def _extract_meta(precip_files, usgs_data, nwm_data, lat, lon, analysis_date):
     """Pull common metadata for the streamflow page."""
     meta = {
@@ -375,7 +428,8 @@ def _extract_meta(precip_files, usgs_data, nwm_data, lat, lon, analysis_date):
         meta["lon"] = p.get("lon", lon)
         meta["elev"] = p.get("elev", 0.0)
         meta["obs_date"] = datetime.strptime(p["obs_date"], "%Y-%m-%d")
-        meta["precip_condition"] = _compute_precip_condition(p)
+        condition, _ = _compute_precip_condition(p)
+        meta["precip_condition"] = condition
     return meta
 
 
@@ -389,14 +443,6 @@ def _plot_precip_page(
     data_dir: str = "data",
 ):
     """Original precip page layout (graph + rain table + stations + description)."""
-
-    def dict_to_series(d):
-        if not d:
-            return pd.Series(dtype=float)
-        s = pd.Series(d)
-        s.index = pd.to_datetime(s.index)
-        return s
-
     daily_precip = dict_to_series(precip_data.get("daily_precip"))
     rolling_total = dict_to_series(precip_data.get("rolling_total"))
     normal_low = dict_to_series(precip_data.get("normal_low"))
@@ -521,19 +567,23 @@ def _plot_precip_page(
     ax1.legend(handles, labels, loc="upper right")
     ax1.set_ylabel("Rainfall (Inches)", fontsize=20)
 
-    if is_gridded:
-        ax1.set_title(
-            "Antecedent Precipitation vs Normal Range based on NOAA's nClimGrid-Daily Precipitation Data",
-            fontsize=20,
-        )
-    else:
-        ax1.set_title(
-            "Antecedent Precipitation vs Normal Range based on NOAA's Daily Global Historical Climatology Network",
-            fontsize=20,
-        )
+    title = "Antecedent Precipitation vs Normal Range based on NOAA's "
+    title += (
+        "nClimGrid-Daily Precipitation Data"
+        if is_gridded
+        else "Daily Global Historical Climatology Network"
+    )
+    ax1.set_title(title, fontsize=20)
 
-    # ----- Rain condition table (ax2) -----
-    total_score = 0
+    # Use the pre-calculated score and condition from the JSON payload
+    summary = precip_data.get("antecedent_score_summary", {})
+    total_score = summary.get("total_score")
+    result = summary.get("condition")
+
+    # Fallback for older JSON files that might not have the summary
+    if total_score is None or result is None:
+        result, total_score = _compute_precip_condition(precip_data)
+
     rain_table_vals = [
         [
             "30 Days Ending",
@@ -551,68 +601,57 @@ def _plot_precip_page(
     for days_prior, weight in [(0, 3), (30, 2), (60, 1)]:
         p_date = obs_date - timedelta(days=days_prior)
         date_str_val = p_date.strftime("%Y-%m-%d")
-        obs_val, low_val, high_val = None, None, None
+        obs_val = rolling_total.get(p_date)
+        low_val = normal_low.get(p_date)
+        high_val = normal_high.get(p_date)
         condition, c_val, prod = "Error", 0, 0
 
-        try:
-            obs_val = rolling_total.get(date_str_val)
-            low_val = normal_low.get(date_str_val)
-            high_val = normal_high.get(date_str_val)
-
-            if any(pd.isna(v) for v in [obs_val, low_val, high_val]):
-                condition, c_val = "Data Missing", 0
+        if any(pd.isna(v) or v is None for v in [obs_val, low_val, high_val]):
+            condition, c_val = "Data Missing", 0
+        else:
+            if obs_val > high_val:
+                condition, c_val = "Wet", 3
+            elif obs_val < low_val:
+                condition, c_val = "Dry", 1
             else:
-                if obs_val > high_val:
-                    condition, c_val = "Wet", 3
-                elif obs_val < low_val:
-                    condition, c_val = "Dry", 1
-                else:
-                    condition, c_val = "Normal", 2
+                condition, c_val = "Normal", 2
 
-                offset = (10, -25) if obs_val > (rolling_max * 0.85) else (15, 30)
-                ax1.annotate(
-                    date_str_val,
-                    xy=(pd.Timestamp(date_str_val), obs_val),
-                    xycoords="data",
-                    xytext=offset,
-                    textcoords="offset points",
-                    size=13,
-                    arrowprops=dict(
-                        arrowstyle="simple",
-                        fc="0.4",
-                        ec="none",
-                        connectionstyle="arc3,rad=0.5",
-                    ),
-                )
+            offset = (10, -25) if obs_val > (rolling_max * 0.85) else (15, 30)
+            ax1.annotate(
+                date_str_val,
+                xy=(p_date, obs_val),
+                xycoords="data",
+                xytext=offset,
+                textcoords="offset points",
+                size=13,
+                arrowprops=dict(
+                    arrowstyle="simple",
+                    fc="0.4",
+                    ec="none",
+                    connectionstyle="arc3,rad=0.5",
+                ),
+            )
 
-            prod = c_val * weight
-            total_score += prod
-            rain_table_vals.append(
-                [
-                    date_str_val,
-                    f"{low_val:.2f}" if low_val is not None else "N/A",
-                    f"{high_val:.2f}" if high_val is not None else "N/A",
-                    f"{obs_val:.2f}" if obs_val is not None else "N/A",
-                    condition,
-                    c_val,
-                    weight,
-                    prod,
-                ]
-            )
-        except (KeyError, TypeError):
-            rain_table_vals.append(
-                [date_str_val, "N/A", "N/A", "N/A", "Error", 0, weight, 0]
-            )
+        prod = c_val * weight
+        rain_table_vals.append(
+            [
+                date_str_val,
+                f"{low_val:.2f}" if low_val is not None else "N/A",
+                f"{high_val:.2f}" if high_val is not None else "N/A",
+                f"{obs_val:.2f}" if obs_val is not None else "N/A",
+                condition,
+                c_val,
+                weight,
+                prod,
+            ]
+        )
         rain_colors.append([white] * 8)
 
-    if total_score < 10:
-        result = "Drier than Normal"
+    if result == "Drier than Normal":
         final_cell_color = light_red
-    elif 10 <= total_score <= 14:
-        result = "Normal Conditions"
+    elif result == "Normal Conditions":
         final_cell_color = light_green
     else:
-        result = "Wetter than Normal"
         final_cell_color = light_blue
 
     rain_table_vals.append(
@@ -635,15 +674,13 @@ def _plot_precip_page(
         ["Observation Date", obs_date.strftime("%Y-%m-%d")],
         ["Elevation (ft)", f"{elev:.2f}"],
     ]
-    desc_colors = [
-        [light_grey, white],
-        [light_grey, white],
-        [light_grey, white],
-    ]
+    desc_colors = [[light_grey, white]] * 3
 
-    palmer_value = pdsi_data.get("palmer_value")
-    palmer_class = pdsi_data.get("palmer_class")
-    palmer_color = pdsi_data.get("palmer_color")
+    palmer_value, palmer_class, palmer_color = (
+        pdsi_data.get("palmer_value"),
+        pdsi_data.get("palmer_class"),
+        pdsi_data.get("palmer_color"),
+    )
     if palmer_value is not None and palmer_class is not None:
         display_text = (
             "Not Available"
@@ -651,22 +688,16 @@ def _plot_precip_page(
             else f"{palmer_value} ({palmer_class})"
         )
         desc_vals.append(["Drought Index (PDSI)", display_text])
-        color_tuple = _as_rgb(palmer_color, white)
-        desc_colors.append([light_grey, color_tuple])
+        desc_colors.append([light_grey, _as_rgb(palmer_color, white)])
 
-    usgs_condition = usgs_data.get("usgs_condition")
-    if usgs_condition is not None:
-        desc_vals.append(["USGS Streamflow", usgs_condition])
+    if usgs_data.get("usgs_condition") is not None:
+        desc_vals.append(["USGS Streamflow", usgs_data["usgs_condition"]])
         desc_colors.append([light_grey, white])
-
-    nwm_condition = nwm_data.get("nwm_condition")
-    if nwm_condition is not None:
-        desc_vals.append(["NWM Streamflow", nwm_condition])
+    if nwm_data.get("nwm_condition") is not None:
+        desc_vals.append(["NWM Streamflow", nwm_data["nwm_condition"]])
         desc_colors.append([light_grey, white])
-
-    wimp_condition = wimp_data.get("wimp_condition")
-    if wimp_condition is not None:
-        desc_vals.append(["WIMP Condition", wimp_condition])
+    if wimp_data.get("wimp_condition") is not None:
+        desc_vals.append(["WIMP Condition", wimp_data["wimp_condition"]])
         desc_colors.append([light_grey, white])
 
     description_table = ax3.table(
@@ -708,24 +739,22 @@ def _plot_precip_page(
         station_colors = [[light_grey] * 8]
 
         for s in stations[:5]:
-            s_lat = s.get("latitude", 0.0)
-            s_lon = s.get("longitude", 0.0)
-            s_elev_m = s.get("elevation", 0.0)
-            s_elev_ft = s_elev_m * 3.28084 if pd.notnull(s_elev_m) else 0.0
+            s_elev_ft = (
+                s.get("elevation", 0.0) * 3.28084
+                if pd.notnull(s.get("elevation"))
+                else 0.0
+            )
             e_diff = abs(elev - s_elev_ft) if elev else 0.0
-            days_norm = s.get("days_normal", 0)
-            days_ante = s.get("days_antecedent", 0)
-
             station_table_vals.append(
                 [
-                    s.get("name", "")[:28],
-                    f"{s_lat:.4f}, {s_lon:.4f}",
+                    str(s.get("name", ""))[:28],
+                    f"{s.get('latitude', 0.0):.4f}, {s.get('longitude', 0.0):.4f}",
                     f"{s_elev_ft:.1f}",
                     f"{s.get('distance', 0):.1f}",
                     f"{e_diff:.1f}",
                     f"{s.get('weighted_diff', 0):.1f}",
-                    str(days_norm),
-                    str(days_ante),
+                    str(s.get("days_normal", 0)),
+                    str(s.get("days_antecedent", 0)),
                 ]
             )
             station_colors.append([white] * 8)

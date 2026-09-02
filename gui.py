@@ -54,7 +54,7 @@ class PrecipGUI:
             print(f"Warning: Could not load icon: {e}")
 
     # ------------------------------------------------------------------
-    # UI construction – mirrors official APT layout
+    # UI construction
     # ------------------------------------------------------------------
     def _build_ui(self):
         # Main container

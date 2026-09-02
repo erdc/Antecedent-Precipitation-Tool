@@ -10,9 +10,9 @@
 *.log
 *.json
 !url_manifest.json
+*.csv
+!gage_data.csv
 *.pdf
 *.nc
 !wimp_data.nc
 *.kml
-*historic*.csv
-*STATS*.csv
