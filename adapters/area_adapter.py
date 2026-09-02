@@ -7,6 +7,7 @@ import json
 import pandas as pd
 
 from engine import EventDispatcher
+from core.data_handler import _compute_precip_condition
 
 logger = logging.getLogger(__name__)
 
@@ -203,28 +204,11 @@ class AreaAdapter:
         logger.info(f"Aggregating results for HUC {message['huc_id']}")
         results = []
 
-        # This function will need a way to load the JSON data.
-        # It's cleaner to put this logic in a core module, but for simplicity,
-        # we can define a nested helper here.
         def _load_json_if_exists(path: str) -> dict:
             if os.path.exists(path):
                 with open(path) as f:
                     return json.load(f)
             return {}
-
-        # Re-create precip condition from stored data (could be a shared utility)
-        def _get_precip_summary(precip_data):
-            # This logic is simplified from core.plotting._compute_precip_condition
-            score = precip_data.get("antecedent_score_summary", {}).get("total_score")
-            if score is None:
-                return None, None
-            if score < 10:
-                condition = "Drier than Normal"
-            elif score <= 14:
-                condition = "Normal Conditions"
-            else:
-                condition = "Wetter than Normal"
-            return score, condition
 
         for point_dir in message["output_dirs"]:
             try:
@@ -241,6 +225,9 @@ class AreaAdapter:
                     None,
                 )
                 if not precip_json_path:
+                    logger.warning(
+                        f"No precipitation data file found in {data_path}, skipping."
+                    )
                     continue
 
                 precip_data = _load_json_if_exists(precip_json_path)
@@ -251,11 +238,8 @@ class AreaAdapter:
                     os.path.join(data_path, f"{date_str}-WIMP.json")
                 )
 
-                # Note: The original precip JSON doesn't store the final score.
-                # This highlights a small gap. For this plan, we assume the score
-                # can be recalculated or, better, added to the stored JSON.
-                # Let's assume a function _recalculate_score exists.
-                score, condition = _get_precip_summary(precip_data)
+                # Use the authoritative function from the data handler
+                condition, score = _compute_precip_condition(precip_data)
 
                 results.append(
                     {
@@ -265,12 +249,18 @@ class AreaAdapter:
                         "PDSI Value": pdsi_data.get("palmer_value"),
                         "PDSI Class": pdsi_data.get("palmer_class"),
                         "Season": wimp_data.get("wimp_condition"),
-                        "Antecedent Precipitation Score": score,
-                        "Antecedent Precipitation Condition": condition,
+                        "Antecedent Precipitation Score": (
+                            score if condition != "Error" else None
+                        ),
+                        "Antecedent Precipitation Condition": (
+                            condition if condition != "Error" else "Data Missing"
+                        ),
                     }
                 )
             except Exception as e:
-                logger.warning(f"Could not process point directory {point_dir}: {e}")
+                logger.warning(
+                    f"Could not process point directory {point_dir}: {e}", exc_info=True
+                )
 
         if not results:
             logger.error(f"No results to aggregate for HUC {message['huc_id']}")
@@ -278,12 +268,10 @@ class AreaAdapter:
 
         # Write to CSV
         df = pd.DataFrame(results)
-        huc_name = message["huc_id"]  # Or a more descriptive name if available
+        huc_name = message["huc_id"]
         date_str = message["analysis_date"].strftime("%Y-%m-%d")
         csv_filename = f"{date_str}-{huc_name}- Sampling Results.csv"
 
-        # The CSV should be in the watershed-scale directory
-        # e.g., Outputs/v3_0_0/~Watershed/HUC12/031601120505/
         output_csv_path = os.path.join(message["base_output_dir"], csv_filename)
 
         df.to_csv(output_csv_path, index=False)

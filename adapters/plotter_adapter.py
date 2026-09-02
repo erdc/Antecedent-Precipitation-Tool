@@ -6,12 +6,9 @@ Connects the pure core/plotting.py functions to the event dispatcher.
 
 import logging
 
-from core.plotting import (
-    generate_pdf,
-    merge_pdfs,
-    merge_huc_batch_pdfs,
-    store_analysis_data,
-)
+from core.data_handler import store_analysis_data
+from core.report_plotter import generate_pdf, merge_pdfs, merge_huc_batch_pdfs
+
 from engine import EventDispatcher
 
 logger = logging.getLogger(__name__)
