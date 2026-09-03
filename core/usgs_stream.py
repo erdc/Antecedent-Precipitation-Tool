@@ -156,7 +156,9 @@ def download_usgs_flow(
     }
 
     try:
-        logger.info(f"Downloading USGS flow for {gage_id} from {download_start.date()}")
+        logger.debug(
+            f"Downloading USGS flow for {gage_id} from {download_start.date()}"
+        )
         resp = requests.get(url, params=params, timeout=30)
         resp.raise_for_status()
 
@@ -191,7 +193,7 @@ def download_usgs_flow(
             combined = combined.drop_duplicates(subset=["time"]).sort_values("time")
 
             save_cache(gage_id, combined, download_date, data_dir)
-            logger.info(
+            logger.debug(
                 f"Updated cache for {gage_id} with {len(combined)} total records"
             )
 
