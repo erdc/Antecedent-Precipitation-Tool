@@ -376,96 +376,37 @@ def _plot_precip_page(
 def _plot_streamflow_page(
     usgs_data: Dict, nwm_data: Dict, meta: Dict, pdf: PdfPages, max_rows: int = 10
 ):
-    """Creates the combined USGS + NWM streamflow page with an embedded spatial diagram."""
+    """Creates the combined USGS + NWM streamflow page with a single, shared legend."""
     light_grey = (0.85, 0.85, 0.85)
     white = (1, 1, 1)
 
     fig = plt.figure(figsize=(17, 11), dpi=140)
     fig.set_facecolor("0.77")
 
-    # 3 rows, 2 columns layout: Left for Tables, Right for Pseudo-Map
     gs = gridspec.GridSpec(
-        3, 2, figure=fig, width_ratios=[1.55, 1.0], height_ratios=[1.35, 1.15, 0.70]
+        3,
+        3,
+        figure=fig,
+        width_ratios=[2.1, 2.1, 1.95],
+        height_ratios=[1.25, 1.25, 0.68],
+        wspace=0.12,
+        hspace=0.30,
     )
 
-    ax_usgs = fig.add_subplot(gs[0, 0])
-    ax_nwm = fig.add_subplot(gs[1, 0])
-    ax_notes = fig.add_subplot(gs[2, 0])
-    ax_map = fig.add_subplot(gs[:, 1])  # Span all 3 rows on the right
+    ax_usgs_table = fig.add_subplot(gs[0, 0:2])
+    ax_nwm_table = fig.add_subplot(gs[1, 0:2])
+    ax_notes = fig.add_subplot(gs[2, 0:2])
 
-    for ax in [ax_usgs, ax_nwm, ax_notes]:
+    ax_usgs_map = fig.add_subplot(gs[0, 2])
+    ax_nwm_map = fig.add_subplot(gs[1, 2])
+    ax_legend = fig.add_subplot(gs[2, 2])
+
+    for ax in [ax_usgs_table, ax_nwm_table, ax_notes, ax_legend]:
         ax.axis("off")
 
-    # --- 1. USGS Table (Left Top) ---
-    sites = (usgs_data or {}).get("usgs_sites", [])[:max_rows]
-    usgs_header = ["Gage Name", "ID", "Dist (mi)", "Flow (cfs)", "%ile", "Condition"]
-    usgs_vals = [usgs_header] + [
-        [
-            s.get("name", "")[:22],
-            s.get("gage_id", ""),
-            f"{s.get('distance_mi', 0):.1f}",
-            f"{s.get('flow_cfs', 0):.1f}",
-            f"{s.get('percentile', 0):.0f}",
-            s.get("condition", ""),
-        ]
-        for s in sites
-    ]
-    ax_usgs.set_title(
-        f"USGS Streamflow – {meta.get('usgs_condition') or 'No Data'}",
-        fontsize=13,
-        pad=8,
-    )
-    ax_usgs.table(
-        cellText=usgs_vals,
-        cellColours=[[light_grey] * 6] + [[white] * 6] * len(sites),
-        loc="upper center",
-    ).set_fontsize(8.5)
+    c_lat = meta.get("lat", 0.0)
+    c_lon = meta.get("lon", 0.0)
 
-    # --- 2. NWM Table (Left Middle) ---
-    reaches = (nwm_data or {}).get("nwm_reaches", [])[:max_rows]
-    nwm_header = ["COMID", "Dist (mi)", "Flow (cfs)", "%ile", "Condition"]
-    nwm_vals = [nwm_header] + [
-        [
-            r.get("COMID", ""),
-            f"{r.get('distance_mi', 0):.1f}",
-            f"{r.get('flow_cfs', 0):.1f}",
-            f"{r.get('percentile', 0):.0f}",
-            r.get("condition", ""),
-        ]
-        for r in reaches
-    ]
-    ax_nwm.set_title(
-        f"NWM Streamflow – {meta.get('nwm_condition') or 'No Data'}",
-        fontsize=13,
-        pad=8,
-    )
-    ax_nwm.table(
-        cellText=nwm_vals,
-        cellColours=[[light_grey] * 5] + [[white] * 5] * len(reaches),
-        loc="upper center",
-    ).set_fontsize(8.5)
-
-    # --- 3. Methods Table (Left Bottom) ---
-    note_vals = [
-        ["USGS Source", "NWIS Daily Values (00060)"],
-        ["USGS Method", "Same-day percentile rank vs historic record"],
-        ["NWM Source", "Analysis-assim + retrospective (1990-2020)"],
-        ["NWM Method", "Same-day percentile rank vs 1990-2020"],
-    ]
-    ax_notes.set_title("Data Sources & Methods", fontsize=13, pad=8)
-    ax_notes.table(
-        cellText=note_vals, cellColours=[[light_grey, white]] * 4, loc="upper center"
-    ).set_fontsize(9)
-
-    # --- 4. Rudimentary Spatial Map (Right Column) ---
-    c_lat, c_lon = meta.get("lat", 0.0), meta.get("lon", 0.0)
-
-    # Target Analysis Point
-    ax_map.scatter(
-        c_lon, c_lat, marker="*", color="red", s=250, zorder=5, label="Analysis Point"
-    )
-
-    # Color helper for streamflow condition
     cond_color_map = {
         "Drier than Normal": "#d95f02",
         "Much Drier than Normal": "#e41a1c",
@@ -474,62 +415,322 @@ def _plot_streamflow_page(
         "Much Wetter than Normal": "#08519c",
     }
 
-    # Plot USGS Gage Locations
-    for s in sites:
-        s_lat, s_lon = s.get("lat"), s.get("lon")
-        if s_lat and s_lon:
-            col = cond_color_map.get(s.get("condition"), "#7570b3")
-            ax_map.scatter(
-                s_lon,
-                s_lat,
-                marker="o",
-                color=col,
-                s=90,
-                edgecolors="black",
-                linewidth=0.8,
-                zorder=4,
-            )
-            ax_map.annotate(
-                f"{s.get('gage_id', '')}",
-                (s_lon, s_lat),
-                fontsize=7,
-                xytext=(4, 4),
-                textcoords="offset points",
-            )
+    table_fontsize = 10.0
+    title_fontsize = 14.0
 
-    # Plot NWM Reach Centroids
-    for r in reaches:
-        r_lat, r_lon = r.get("lat"), r.get("lon")
-        if r_lat and r_lon:
-            col = cond_color_map.get(r.get("condition"), "#999999")
-            ax_map.scatter(
-                r_lon,
-                r_lat,
-                marker="s",
-                color=col,
-                s=60,
-                edgecolors="black",
-                linewidth=0.6,
-                zorder=3,
-            )
+    # USGS Table
+    sites = (usgs_data or {}).get("usgs_sites", [])[:max_rows]
+    usgs_header = ["Gage Name", "ID", "Dist (mi)", "Flow (cfs)", "%ile", "Condition"]
+    usgs_vals = [usgs_header] + [
+        [
+            s.get("name", "")[:27],
+            s.get("gage_id", ""),
+            f"{s.get('distance_mi', 0):.1f}",
+            f"{s.get('flow_cfs', 0):.1f}",
+            f"{s.get('percentile', 0):.0f}",
+            s.get("condition", ""),
+        ]
+        for s in sites
+    ]
 
-    # Set Aspect Ratio to mimic accurate local geometry (Equirectangular approximation)
-    cos_lat = np.cos(np.radians(c_lat)) if c_lat != 0 else 1.0
-    ax_map.set_aspect(1.0 / cos_lat)
+    ax_usgs_table.set_title(
+        f"USGS Streamflow – {meta.get('usgs_condition') or 'No Data'}",
+        fontsize=title_fontsize,
+        pad=12,
+        fontweight="bold",
+    )
+    t1 = ax_usgs_table.table(
+        cellText=usgs_vals,
+        cellColours=[[light_grey] * 6] + [[white] * 6] * len(sites),
+        loc="upper center",
+        colWidths=[0.34, 0.13, 0.105, 0.13, 0.10, 0.195],
+    )
+    t1.set_fontsize(table_fontsize)
+    t1.auto_set_font_size(False)
 
-    # Styling for Map Illusion
-    ax_map.set_facecolor("#f2efe9")  # Subdued map canvas background
-    ax_map.grid(True, linestyle="--", alpha=0.5, color="#888888")
-    ax_map.set_xlabel("Longitude (°)", fontsize=10)
-    ax_map.set_ylabel("Latitude (°)", fontsize=10)
-    ax_map.set_title("Relative Spatial Distribution", fontsize=13, pad=8)
-    ax_map.legend(loc="upper right", fontsize=8, framealpha=0.9)
+    # NWM Table
+    reaches = (nwm_data or {}).get("nwm_reaches", [])[:max_rows]
+    nwm_header = ["COMID", "Dist (mi)", "Flow (cfs)", "%ile", "Condition"]
+    nwm_vals = [nwm_header] + [
+        [
+            str(r.get("COMID", ""))[:9],
+            f"{r.get('distance_mi', 0):.1f}",
+            f"{r.get('flow_cfs', 0):.1f}",
+            f"{r.get('percentile', 0):.0f}",
+            r.get("condition", ""),
+        ]
+        for r in reaches
+    ]
+
+    ax_nwm_table.set_title(
+        f"NWM Streamflow – {meta.get('nwm_condition') or 'No Data'}",
+        fontsize=title_fontsize,
+        pad=12,
+        fontweight="bold",
+    )
+    t2 = ax_nwm_table.table(
+        cellText=nwm_vals,
+        cellColours=[[light_grey] * 5] + [[white] * 5] * len(reaches),
+        loc="upper center",
+        colWidths=[0.23, 0.13, 0.15, 0.13, 0.36],
+    )
+    t2.set_fontsize(table_fontsize)
+    t2.auto_set_font_size(False)
+
+    # Methods Table
+    note_vals = [
+        ["USGS Source", "NWIS Daily Values (00060)"],
+        ["USGS Method", "Same-day percentile rank vs historic record"],
+        ["NWM Source", "Analysis-assim + retrospective (1990-2020)"],
+        ["NWM Method", "Same-day percentile rank vs 1990-2020"],
+    ]
+    ax_notes.set_title(
+        "Data Sources & Methods", fontsize=13.5, pad=10, fontweight="bold"
+    )
+    t3 = ax_notes.table(
+        cellText=note_vals,
+        cellColours=[[light_grey, white]] * 4,
+        loc="upper center",
+        colWidths=[0.37, 0.63],
+    )
+    t3.set_fontsize(10.0)
+    t3.auto_set_font_size(False)
+
+    # Map plotting (without individual legends)
+    _plot_condition_map(
+        ax_usgs_map,
+        c_lat,
+        c_lon,
+        sites,
+        cond_color_map,
+        "USGS Gages",
+        marker="o",
+        create_legend=False,
+    )
+    _plot_condition_map(
+        ax_nwm_map,
+        c_lat,
+        c_lon,
+        reaches,
+        cond_color_map,
+        "NWM Reaches",
+        marker="o",
+        create_legend=False,
+    )
+
+    # Create and place the single, unified legend
+    from matplotlib.lines import Line2D
+
+    legend_elements = [
+        Line2D(
+            [0],
+            [0],
+            marker="*",
+            color="w",
+            label="Analysis Point",
+            markerfacecolor="red",
+            markersize=12,
+            markeredgecolor="black",
+        ),
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color="w",
+            label="USGS Gage / NWM Reach",
+            markerfacecolor="gray",
+            markersize=9,
+            markeredgecolor="black",
+        ),
+        Line2D([0], [0], marker="None", color="None", label=""),  # Spacer
+        Line2D(
+            [0],
+            [0],
+            marker="s",
+            color="w",
+            label="Drier",
+            markerfacecolor="#d95f02",
+            markersize=10,
+            linestyle="None",
+        ),
+        Line2D(
+            [0],
+            [0],
+            marker="s",
+            color="w",
+            label="Normal",
+            markerfacecolor="#4daf4a",
+            markersize=10,
+            linestyle="None",
+        ),
+        Line2D(
+            [0],
+            [0],
+            marker="s",
+            color="w",
+            label="Wetter",
+            markerfacecolor="#377eb8",
+            markersize=10,
+            linestyle="None",
+        ),
+    ]
+    ax_legend.legend(
+        handles=legend_elements,
+        loc="center left",
+        fontsize=11,
+        title="Legend",
+        title_fontsize=13,
+        frameon=False,
+    )
 
     plt.subplots_adjust(
-        hspace=0.34, wspace=0.18, left=0.04, bottom=0.06, top=0.92, right=0.97
+        left=0.04, right=0.98, bottom=0.065, top=0.915, hspace=0.28, wspace=0.15
     )
     pdf.savefig(fig, facecolor=fig.get_facecolor())
     plt.close(fig)
+
+
+def _plot_condition_map(
+    ax,
+    center_lat,
+    center_lon,
+    points,
+    color_map,
+    title,
+    marker="o",
+    size=115,
+    label_size=8.0,
+    create_legend=False,  # This argument is now correctly defined
+):
+    """Plots data points on a map; legend creation is now optional."""
+    # Analysis Point
+    ax.scatter(
+        center_lon,
+        center_lat,
+        marker="*",
+        color="red",
+        s=290,
+        zorder=10,
+        edgecolors="black",
+        linewidth=1.4,
+        label="Analysis Point",
+    )
+
+    plotted = []
+    for i, pt in enumerate(points):
+        lat = pt.get("lat")
+        lon = pt.get("lon")
+        if lat is None or lon is None:
+            continue
+        color = color_map.get(pt.get("condition"), "#7570b3")
+        ax.scatter(
+            lon,
+            lat,
+            marker=marker,
+            color=color,
+            s=size,
+            edgecolors="black",
+            linewidth=0.9,
+            zorder=5,
+        )
+        label = str(pt.get("gage_id") or pt.get("COMID", ""))
+        plotted.append((lon, lat, label, i))
+
+    # Labels
+    for lon, lat, label, idx in plotted:
+        ox = [8, -9, 7, -8][idx % 4]
+        oy = [8, -7, 9, -6][idx % 4]
+        ax.annotate(
+            label,
+            (lon, lat),
+            fontsize=label_size,
+            xytext=(ox, oy),
+            textcoords="offset points",
+            ha="left" if ox > 0 else "right",
+            va="bottom" if oy > 0 else "top",
+            zorder=8,
+            bbox=dict(boxstyle="round,pad=0.2", fc="white", alpha=0.8),
+        )
+
+    # Intelligent limits and ticks
+    if plotted:
+        lons = [p[0] for p in plotted]
+        lats = [p[1] for p in plotted]
+        lon_rng = max(lons) - min(lons) or 0.1
+        lat_rng = max(lats) - min(lats) or 0.05
+        ax.set_xlim(min(lons) - lon_rng * 0.22, max(lons) + lon_rng * 0.22)
+        ax.set_ylim(min(lats) - lat_rng * 0.20, max(lats) + lat_rng * 0.20)
+        ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=5))
+        ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=5))
+    else:
+        ax.set_xlim(center_lon - 0.12, center_lon + 0.12)
+        ax.set_ylim(center_lat - 0.08, center_lat + 0.08)
+
+    cos_lat = np.cos(np.radians(center_lat)) if abs(center_lat) > 0.01 else 1.0
+    ax.set_aspect(1.0 / cos_lat)
+
+    ax.set_facecolor("#f2efe9")
+    ax.grid(True, linestyle="--", alpha=0.55, color="#666666")
+    ax.set_xlabel("Longitude (°)", fontsize=10.5)
+    ax.set_ylabel("Latitude (°)", fontsize=10.5)
+    ax.set_title(title, fontsize=13.5, pad=10, fontweight="bold")
+
+    # This conditional block is intentionally left here, but will not be
+    # triggered by the corrected _plot_streamflow_page function.
+    if create_legend:
+        from matplotlib.lines import Line2D
+
+        legend_elements = [
+            Line2D(
+                [0],
+                [0],
+                marker="*",
+                color="w",
+                label="Analysis Point",
+                markerfacecolor="red",
+                markersize=11,
+                markeredgecolor="black",
+            ),
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                color="w",
+                label="Drier",
+                markerfacecolor="#d95f02",
+                markersize=9,
+                markeredgecolor="black",
+            ),
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                color="w",
+                label="Normal",
+                markerfacecolor="#4daf4a",
+                markersize=9,
+                markeredgecolor="black",
+            ),
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                color="w",
+                label="Wetter",
+                markerfacecolor="#377eb8",
+                markersize=9,
+                markeredgecolor="black",
+            ),
+        ]
+        ax.legend(
+            handles=legend_elements,
+            loc="upper left",
+            fontsize=8.2,
+            title="Legend",
+            bbox_to_anchor=(1.02, 1),
+        )
+
+    ax.set_anchor("C")
 
 
 # ====================== PDF GENERATION AND MERGING ======================
