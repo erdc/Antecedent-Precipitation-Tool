@@ -528,7 +528,7 @@ def analyze_nwm(
     if write_kml and coord_dir:
         write_nwm_kml(result_df, local_comids, lat, lon, date_obj, coord_dir)
 
-    logger.info(f"NWM analysis complete – {len(result_df)} reaches")
+    logger.info(f"NWM analysis complete - {len(result_df)} reaches")
     return result_df
 
 
