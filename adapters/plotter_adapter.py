@@ -101,15 +101,11 @@ class PlotterAdapter:
                 logger.error("Missing required fields for HUC PDF merge")
                 return None
 
-            path = merge_huc_batch_pdfs(
+            merge_huc_batch_pdfs(
                 output_dirs=message["output_dirs"],
                 base_output_dir=message["base_output_dir"],
                 huc_id=message["huc_id"],
             )
-            if path:
-                logger.info(f"HUC PDF merge completed: {path}")
-            else:
-                logger.warning("HUC PDF merge produced no output")
             return None
 
         except Exception as e:

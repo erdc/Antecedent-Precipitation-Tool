@@ -1,15 +1,15 @@
-# usgs_simple.py
+# usgs_stream.py
 """
-Simple Imperative USGS Streamflow Analysis
-No classes, no OOP - just straightforward functions.
+Simple Imperative USGS Streamflow Analysis with Caching
 """
 
 import csv
 import io
+import json
 import logging
 import os
-from pathlib import Path
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
@@ -20,12 +20,210 @@ from shapely.geometry import Point
 
 logger = logging.getLogger(__name__)
 
-USGS_DATA_SUBDIR = "usgs_flow"
+NWIS_CACHE_DIR = "nwis_cache"
+
+
+def get_cache_path(gage_id: str, data_dir: str = "data") -> Path:
+    """Return path to cached streamflow JSON for a gage."""
+    cache_dir = Path(data_dir) / NWIS_CACHE_DIR
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir / f"{gage_id}.json"
+
+
+def load_cache(gage_id: str, data_dir: str = "data") -> dict | None:
+    """Load cached data if it exists."""
+    cache_path = get_cache_path(gage_id, data_dir)
+    if not cache_path.exists():
+        return None
+
+    try:
+        with open(cache_path, "r") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError) as e:
+        logger.warning(f"Failed to read cache for {gage_id}: {e}")
+        return None
+
+
+def save_cache(
+    gage_id: str, df: pd.DataFrame, download_date: datetime, data_dir: str = "data"
+) -> None:
+    """Save streamflow data to cache as JSON."""
+    if df.empty:
+        return
+
+    cache_path = get_cache_path(gage_id, data_dir)
+
+    cache_data = {
+        "gage_id": gage_id,
+        "por_start": df["time"].min().strftime("%Y-%m-%d"),
+        "por_end": df["time"].max().strftime("%Y-%m-%d"),
+        "download_date": download_date.isoformat(),
+        "data": df.to_dict(orient="records"),
+    }
+
+    try:
+        with open(cache_path, "w") as f:
+            json.dump(cache_data, f, indent=2, default=str)
+        logger.debug(f"Cached USGS data for {gage_id} ({len(df)} records)")
+    except Exception as e:
+        logger.error(f"Failed to write cache for {gage_id}: {e}")
+
+
+def has_sufficient_por(
+    cache: dict, required_start: datetime, required_end: datetime, min_years: int = 5
+) -> bool:
+    """Check if cache has enough historical data, even with some gaps."""
+    if not cache or "data" not in cache:
+        return False
+
+    df = pd.DataFrame(cache["data"])
+    if df.empty:
+        return False
+
+    df["time"] = pd.to_datetime(df["time"])
+    mask = (df["time"] >= required_start) & (df["time"] <= required_end)
+    available = df[mask]
+
+    if len(available) < 30:  # At minimum need ~1 month
+        return False
+
+    years_covered = (available["time"].max() - available["time"].min()).days / 365.25
+    return years_covered >= min_years
+
+
+def download_usgs_flow(
+    gage_id: str,
+    start_date: str,
+    end_date: str,
+    data_dir: str = "data",
+    force_refresh: bool = False,
+) -> pd.DataFrame:
+    """Download daily streamflow with intelligent caching and gap detection."""
+    required_start = datetime.strptime(start_date, "%Y-%m-%d")
+    required_end = datetime.strptime(end_date, "%Y-%m-%d")
+
+    cache = load_cache(gage_id, data_dir)
+    now = datetime.now()
+
+    # Case 1: Good cache exists
+    if not force_refresh and cache and is_cache_fresh(cache):
+        df = pd.DataFrame(cache.get("data", []))
+        if not df.empty:
+            df["time"] = pd.to_datetime(df["time"])
+            requested = df[
+                (df["time"] >= required_start) & (df["time"] <= required_end)
+            ]
+
+            # Only use cache if we have decent coverage for the analysis date
+            if not requested.empty or has_sufficient_por(
+                cache, required_start, required_end
+            ):
+                logger.debug(
+                    f"Using cached data for gage {gage_id} ({len(requested)} records in period)"
+                )
+                return requested if not requested.empty else df
+
+    # Determine what to download
+    download_start = required_start
+    if cache and not force_refresh and is_cache_fresh(cache):
+        cached_df = pd.DataFrame(cache["data"])
+        cached_df["time"] = pd.to_datetime(cached_df["time"])
+
+        # Find gaps in the required period
+        all_dates = pd.date_range(required_start, required_end, freq="D")
+        cached_dates = cached_df["time"].dt.normalize()
+        missing_dates = all_dates[~all_dates.isin(cached_dates)]
+
+        if len(missing_dates) == 0:
+            return cached_df[
+                (cached_df["time"] >= required_start)
+                & (cached_df["time"] <= required_end)
+            ]
+
+        # Download only missing data + some buffer
+        download_start = missing_dates.min() - timedelta(days=30)  # buffer
+    else:
+        download_start = datetime(1950, 1, 1)
+
+    # === DOWNLOAD NEW DATA ===
+    url = get_base_url("usgs_nwis_dv")
+    params = {
+        "format": "rdb",
+        "sites": gage_id,
+        "startDT": download_start.strftime("%Y-%m-%d"),
+        "endDT": end_date,
+        "parameterCd": "00060",
+    }
+
+    try:
+        logger.info(f"Downloading USGS flow for {gage_id} from {download_start.date()}")
+        resp = requests.get(url, params=params, timeout=30)
+        resp.raise_for_status()
+
+        reader = csv.reader(io.StringIO(resp.text), delimiter="\t")
+        new_data = []
+        for row in reader:
+            if row and len(row) > 3 and row[0] == "USGS" and not row[0].startswith("#"):
+                try:
+                    new_data.append(
+                        {
+                            "time": pd.to_datetime(row[2]).normalize(),
+                            "discharge": float(row[3]),
+                        }
+                    )
+                except (ValueError, IndexError):
+                    continue
+
+        new_df = pd.DataFrame(new_data)
+
+        if not new_df.empty:
+            download_date = now
+
+            # Merge with existing cache
+            if cache and cache.get("data"):
+                old_df = pd.DataFrame(cache["data"])
+                old_df["time"] = pd.to_datetime(old_df["time"]).dt.normalize()
+                combined = pd.concat([old_df, new_df], ignore_index=True)
+            else:
+                combined = new_df
+
+            # Remove duplicates and sort
+            combined = combined.drop_duplicates(subset=["time"]).sort_values("time")
+
+            save_cache(gage_id, combined, download_date, data_dir)
+            logger.info(
+                f"Updated cache for {gage_id} with {len(combined)} total records"
+            )
+
+            return combined[
+                (combined["time"] >= required_start)
+                & (combined["time"] <= required_end)
+            ]
+
+    except Exception as e:
+        logger.debug(f"Failed to download USGS data for {gage_id}: {e}")
+
+    # Fallback to cache even if incomplete
+    if cache and cache.get("data"):
+        df = pd.DataFrame(cache["data"])
+        df["time"] = pd.to_datetime(df["time"])
+        return df[(df["time"] >= required_start) & (df["time"] <= required_end)]
+
+    return pd.DataFrame()
+
+
+def is_cache_fresh(cache: dict) -> bool:
+    """Check if cache is less than 30 days old."""
+    if not cache or "download_date" not in cache:
+        return False
+    download_date = datetime.fromisoformat(
+        cache["download_date"].replace("Z", "+00:00")
+    )
+    return (datetime.now() - download_date) <= timedelta(days=30)
 
 
 def get_special_region(lat: float, lon: float, shapefile_path: str):
     """Determine if location is in CONUS or a special region (AK, HI, PR, etc.)."""
-    # Remove os.path.exists() and just let Geopandas try to read the URI
     try:
         usa_gdf = gpd.read_file(shapefile_path)
     except Exception as e:
@@ -41,52 +239,12 @@ def get_special_region(lat: float, lon: float, shapefile_path: str):
         predicate="intersects",
     )
 
-    if joined.empty:
+    if joined.empty or pd.isna(joined["STUSPS"].iloc[0]):
         return -1
 
     stusps = joined["STUSPS"].iloc[0]
-    if pd.isna(stusps):
-        return -1
-
     special = {"AK", "HI", "PR", "VI", "GU", "MP", "AS"}
     return stusps if stusps in special else "CONUS"
-
-
-def download_usgs_flow(gage_id: str, start_date: str, end_date: str) -> pd.DataFrame:
-    """Download daily streamflow (discharge) from USGS."""
-    url = get_base_url("usgs_nwis_dv")
-    params = {
-        "format": "rdb",
-        "sites": gage_id,
-        "startDT": start_date,
-        "endDT": end_date,
-        "parameterCd": "00060",
-    }
-
-    # TODO: This try needs a simple wait and retry loop
-    #       currently it pings the servers too fast and
-    #       the usgs drop stuff
-    try:
-        resp = requests.get(url, params=params, timeout=20)
-        resp.raise_for_status()
-
-        reader = csv.reader(io.StringIO(resp.text), delimiter="\t")
-        data = []
-        for row in reader:
-            if row and len(row) > 3 and row[0] == "USGS" and not row[0].startswith("#"):
-                try:
-                    data.append(
-                        {"time": pd.to_datetime(row[2]), "discharge": float(row[3])}
-                    )
-                except (ValueError, IndexError):
-                    continue
-
-        return pd.DataFrame(data)
-
-    except Exception as e:
-        # This message is common and a non issue so hiding it at debug level
-        logger.debug(f"Failed to download USGS data for {gage_id}: {e}")
-        return pd.DataFrame()
 
 
 def get_local_gages(
@@ -279,16 +437,17 @@ def analyze_usgs(
     end_dt = pd.to_datetime(date_str)
 
     for _, gage in gages.iterrows():
-        flow_df = download_usgs_flow(gage["gage_id"], "1950-01-01", date_str)
+        flow_df = download_usgs_flow(
+            gage["gage_id"], "1950-01-01", date_str, data_dir=data_dir
+        )
         if flow_df.empty:
             continue
 
-        # Get flow on analysis date
-        current_flow = flow_df[flow_df["time"] == end_dt]
-        if current_flow.empty:
+        current_flow_df = flow_df[flow_df["time"] == end_dt]
+        if current_flow_df.empty:
             continue
 
-        current_flow = current_flow["discharge"].iloc[0]
+        current_flow = current_flow_df["discharge"].iloc[0]
 
         # Calculate percentile
         day_of_year = end_dt.strftime("%m-%d")

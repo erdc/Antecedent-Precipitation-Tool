@@ -15,6 +15,8 @@ from typing import Any, Dict
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+import matplotlib.gridspec as gridspec
+from matplotlib.patches import Circle
 import numpy as np
 import pandas as pd
 from matplotlib import rcParams
@@ -374,28 +376,32 @@ def _plot_precip_page(
 def _plot_streamflow_page(
     usgs_data: Dict, nwm_data: Dict, meta: Dict, pdf: PdfPages, max_rows: int = 10
 ):
-    """Creates the combined USGS + NWM streamflow page."""
+    """Creates the combined USGS + NWM streamflow page with an embedded spatial diagram."""
     light_grey = (0.85, 0.85, 0.85)
     white = (1, 1, 1)
 
-    fig, (ax_usgs, ax_nwm, ax_notes) = plt.subplots(
-        3,
-        1,
-        figsize=(17, 11),
-        dpi=140,
-        gridspec_kw={"height_ratios": [1.35, 1.15, 0.70]},
-    )
+    fig = plt.figure(figsize=(17, 11), dpi=140)
     fig.set_facecolor("0.77")
+
+    # 3 rows, 2 columns layout: Left for Tables, Right for Pseudo-Map
+    gs = gridspec.GridSpec(
+        3, 2, figure=fig, width_ratios=[1.55, 1.0], height_ratios=[1.35, 1.15, 0.70]
+    )
+
+    ax_usgs = fig.add_subplot(gs[0, 0])
+    ax_nwm = fig.add_subplot(gs[1, 0])
+    ax_notes = fig.add_subplot(gs[2, 0])
+    ax_map = fig.add_subplot(gs[:, 1])  # Span all 3 rows on the right
 
     for ax in [ax_usgs, ax_nwm, ax_notes]:
         ax.axis("off")
 
-    # USGS table
+    # --- 1. USGS Table (Left Top) ---
     sites = (usgs_data or {}).get("usgs_sites", [])[:max_rows]
     usgs_header = ["Gage Name", "ID", "Dist (mi)", "Flow (cfs)", "%ile", "Condition"]
     usgs_vals = [usgs_header] + [
         [
-            s.get("name", "")[:26],
+            s.get("name", "")[:22],
             s.get("gage_id", ""),
             f"{s.get('distance_mi', 0):.1f}",
             f"{s.get('flow_cfs', 0):.1f}",
@@ -413,9 +419,9 @@ def _plot_streamflow_page(
         cellText=usgs_vals,
         cellColours=[[light_grey] * 6] + [[white] * 6] * len(sites),
         loc="upper center",
-    ).set_fontsize(9)
+    ).set_fontsize(8.5)
 
-    # NWM table
+    # --- 2. NWM Table (Left Middle) ---
     reaches = (nwm_data or {}).get("nwm_reaches", [])[:max_rows]
     nwm_header = ["COMID", "Dist (mi)", "Flow (cfs)", "%ile", "Condition"]
     nwm_vals = [nwm_header] + [
@@ -429,15 +435,17 @@ def _plot_streamflow_page(
         for r in reaches
     ]
     ax_nwm.set_title(
-        f"NWM Streamflow – {meta.get('nwm_condition') or 'No Data'}", fontsize=13, pad=8
+        f"NWM Streamflow – {meta.get('nwm_condition') or 'No Data'}",
+        fontsize=13,
+        pad=8,
     )
     ax_nwm.table(
         cellText=nwm_vals,
         cellColours=[[light_grey] * 5] + [[white] * 5] * len(reaches),
         loc="upper center",
-    ).set_fontsize(9)
+    ).set_fontsize(8.5)
 
-    # Methods table
+    # --- 3. Methods Table (Left Bottom) ---
     note_vals = [
         ["USGS Source", "NWIS Daily Values (00060)"],
         ["USGS Method", "Same-day percentile rank vs historic record"],
@@ -447,9 +455,79 @@ def _plot_streamflow_page(
     ax_notes.set_title("Data Sources & Methods", fontsize=13, pad=8)
     ax_notes.table(
         cellText=note_vals, cellColours=[[light_grey, white]] * 4, loc="upper center"
-    ).set_fontsize(10)
+    ).set_fontsize(9)
 
-    plt.subplots_adjust(hspace=0.34, left=0.04, bottom=0.05, top=0.90, right=0.97)
+    # --- 4. Rudimentary Spatial Map (Right Column) ---
+    c_lat, c_lon = meta.get("lat", 0.0), meta.get("lon", 0.0)
+
+    # Target Analysis Point
+    ax_map.scatter(
+        c_lon, c_lat, marker="*", color="red", s=250, zorder=5, label="Analysis Point"
+    )
+
+    # Color helper for streamflow condition
+    cond_color_map = {
+        "Drier than Normal": "#d95f02",
+        "Much Drier than Normal": "#e41a1c",
+        "Normal": "#4daf4a",
+        "Wetter than Normal": "#377eb8",
+        "Much Wetter than Normal": "#08519c",
+    }
+
+    # Plot USGS Gage Locations
+    for s in sites:
+        s_lat, s_lon = s.get("lat"), s.get("lon")
+        if s_lat and s_lon:
+            col = cond_color_map.get(s.get("condition"), "#7570b3")
+            ax_map.scatter(
+                s_lon,
+                s_lat,
+                marker="o",
+                color=col,
+                s=90,
+                edgecolors="black",
+                linewidth=0.8,
+                zorder=4,
+            )
+            ax_map.annotate(
+                f"{s.get('gage_id', '')}",
+                (s_lon, s_lat),
+                fontsize=7,
+                xytext=(4, 4),
+                textcoords="offset points",
+            )
+
+    # Plot NWM Reach Centroids
+    for r in reaches:
+        r_lat, r_lon = r.get("lat"), r.get("lon")
+        if r_lat and r_lon:
+            col = cond_color_map.get(r.get("condition"), "#999999")
+            ax_map.scatter(
+                r_lon,
+                r_lat,
+                marker="s",
+                color=col,
+                s=60,
+                edgecolors="black",
+                linewidth=0.6,
+                zorder=3,
+            )
+
+    # Set Aspect Ratio to mimic accurate local geometry (Equirectangular approximation)
+    cos_lat = np.cos(np.radians(c_lat)) if c_lat != 0 else 1.0
+    ax_map.set_aspect(1.0 / cos_lat)
+
+    # Styling for Map Illusion
+    ax_map.set_facecolor("#f2efe9")  # Subdued map canvas background
+    ax_map.grid(True, linestyle="--", alpha=0.5, color="#888888")
+    ax_map.set_xlabel("Longitude (°)", fontsize=10)
+    ax_map.set_ylabel("Latitude (°)", fontsize=10)
+    ax_map.set_title("Relative Spatial Distribution", fontsize=13, pad=8)
+    ax_map.legend(loc="upper right", fontsize=8, framealpha=0.9)
+
+    plt.subplots_adjust(
+        hspace=0.34, wspace=0.18, left=0.04, bottom=0.06, top=0.92, right=0.97
+    )
     pdf.savefig(fig, facecolor=fig.get_facecolor())
     plt.close(fig)
 
