@@ -312,6 +312,8 @@ def analyze_usgs(
                 "flow_cfs": round(current_flow, 1),
                 "percentile": percentile,
                 "condition": condition,
+                "lat": float(gage["lat"]) if pd.notna(gage["lat"]) else None,
+                "lon": float(gage["lon"]) if pd.notna(gage["lon"]) else None,
             }
         )
 

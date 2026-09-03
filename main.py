@@ -61,7 +61,7 @@ def setup_logging():
 
     # 1. Create the rolling file handler
     file_handler = RotatingFileHandler(
-        os.path.join(log_dir, "log.log"), maxBytes=5 * 1024 * 1024, backupCount=3
+        os.path.join(log_dir, "log.log"), maxBytes=4 * 1024 * 1024, backupCount=3
     )
     file_handler.setFormatter(long_format)
 

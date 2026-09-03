@@ -500,8 +500,11 @@ def analyze_nwm(
         if perc < 0:
             continue
 
-        dist = local_comids.loc[local_comids["COMID"] == int(col), "dist"]
-        dist_val = float(dist.iloc[0]) if not dist.empty else -1.0
+        dist_match = local_comids.loc[local_comids["COMID"] == int(col)]
+
+        dist_val = float(dist_match["dist"].iloc[0]) if not dist_match.empty else -1.0
+        lat_val = float(dist_match["lat"].iloc[0]) if not dist_match.empty else None
+        lon_val = float(dist_match["lon"].iloc[0]) if not dist_match.empty else None
 
         results.append(
             {
@@ -510,6 +513,8 @@ def analyze_nwm(
                 "percentile": perc,
                 "condition": condition_from_percentile(perc),
                 "distance_mi": round(dist_val, 2),
+                "lat": lat_val,
+                "lon": lon_val,
             }
         )
 

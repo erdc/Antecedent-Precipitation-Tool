@@ -125,6 +125,119 @@ def _get_data_path(
     return os.path.join(data_dir, f"{date_str}-{suffix}.json")
 
 
+def _first_present(d: Dict[str, Any], keys):
+    """Return the first present value from a dict for any key in keys."""
+    for k in keys:
+        if k in d and d.get(k) is not None:
+            return d.get(k)
+    return None
+
+
+def _normalize_usgs_sites_for_json(usgs_sites):
+    """
+    Ensure each stored USGS site includes lat/lon if available under alternate keys.
+
+    Common possibilities:
+      - lat / lon
+      - latitude / longitude
+      - dec_lat_va / dec_long_va
+      - nested fields from upstream APIs
+
+    This version logs enough detail to identify the real upstream field names.
+    """
+    normalized = []
+
+    for i, site in enumerate(usgs_sites or []):
+        if not isinstance(site, dict):
+            logger.warning(
+                "USGS site %s is not a dict during JSON normalization: type=%s value=%r",
+                i,
+                type(site).__name__,
+                site,
+            )
+            normalized.append(site)
+            continue
+
+        row = dict(site)
+
+        lat_source = _first_present(
+            row, ["lat", "latitude", "dec_lat_va", "site_lat", "y"]
+        )
+        lon_source = _first_present(
+            row, ["lon", "longitude", "dec_long_va", "site_lon", "x"]
+        )
+
+        lat = (
+            float(v)
+            if pd.notna(v := pd.to_numeric(lat_source, errors="coerce"))
+            else None
+        )
+        lon = (
+            float(v)
+            if pd.notna(v := pd.to_numeric(lon_source, errors="coerce"))
+            else None
+        )
+
+        row["lat"] = lat
+        row["lon"] = lon
+        normalized.append(row)
+
+    logger.debug("USGS JSON normalization complete: total=%s", len(normalized))
+
+    return normalized
+
+
+def _normalize_nwm_reaches_for_json(nwm_reaches):
+    """
+    Ensure each stored NWM reach includes lat/lon if available under alternate keys.
+
+    Common possibilities:
+      - lat / lon
+      - latitude / longitude
+      - reach_lat / reach_lon
+      - y / x
+      - nested geometry/location fields
+
+    This version logs enough detail to identify the real upstream field names.
+    """
+    normalized = []
+
+    for i, reach in enumerate(nwm_reaches or []):
+        if not isinstance(reach, dict):
+            logger.warning(
+                "NWM reach %s is not a dict during JSON normalization: type=%s value=%r",
+                i,
+                type(reach).__name__,
+                reach,
+            )
+            normalized.append(reach)
+            continue
+
+        row = dict(reach)
+
+        lat_source = _first_present(row, ["lat", "latitude", "reach_lat", "y"])
+        lon_source = _first_present(row, ["lon", "longitude", "reach_lon", "x"])
+
+        lat = (
+            float(v)
+            if pd.notna(v := pd.to_numeric(lat_source, errors="coerce"))
+            else None
+        )
+        lon = (
+            float(v)
+            if pd.notna(v := pd.to_numeric(lon_source, errors="coerce"))
+            else None
+        )
+
+        row["lat"] = lat
+        row["lon"] = lon
+        normalized.append(row)
+
+    logger.debug("NWM JSON normalization complete: total=%s", len(normalized))
+
+    return normalized
+
+
 # ====================== DATA STORAGE ======================
 
 
@@ -211,12 +324,17 @@ def store_usgs_data(data: Dict[str, Any]):
     path = _get_data_path(
         data["output_dir"], data["lat"], data["lon"], data["obs_date"], "USGS"
     )
+
+    normalized_sites = _normalize_usgs_sites_for_json(data.get("usgs_sites", []))
+
     payload = {
         "usgs_condition": data.get("usgs_condition"),
-        "usgs_sites": data.get("usgs_sites", []),
+        "usgs_sites": normalized_sites,
     }
+
     with open(path, "w") as f:
         json.dump(payload, f, indent=4, cls=NpEncoder)
+
     logger.info(f"Stored USGS data: {path}")
 
 
@@ -225,12 +343,17 @@ def store_nwm_data(data: Dict[str, Any]):
     path = _get_data_path(
         data["output_dir"], data["lat"], data["lon"], data["obs_date"], "NWM"
     )
+
+    normalized_reaches = _normalize_nwm_reaches_for_json(data.get("nwm_reaches", []))
+
     payload = {
         "nwm_condition": data.get("nwm_condition"),
-        "nwm_reaches": data.get("nwm_reaches", []),
+        "nwm_reaches": normalized_reaches,
     }
+
     with open(path, "w") as f:
         json.dump(payload, f, indent=4, cls=NpEncoder)
+
     logger.info(f"Stored NWM data: {path}")
 
 
