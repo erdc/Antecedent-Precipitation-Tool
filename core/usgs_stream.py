@@ -91,6 +91,23 @@ def has_sufficient_por(
     return years_covered >= min_years
 
 
+def is_cache_fresh(cache: dict) -> bool:
+    """Check if cache is less than 30 days old. Handles naive/aware datetimes safely."""
+    if not cache or "download_date" not in cache:
+        return False
+    try:
+        raw = cache["download_date"]
+        if isinstance(raw, str) and raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        download_date = datetime.fromisoformat(raw)
+        # Normalize to naive for comparison with datetime.now()
+        if download_date.tzinfo is not None:
+            download_date = download_date.replace(tzinfo=None)
+        return (datetime.now() - download_date) <= timedelta(days=30)
+    except (ValueError, TypeError, AttributeError):
+        return False
+
+
 def download_usgs_flow(
     gage_id: str,
     start_date: str,
@@ -98,50 +115,62 @@ def download_usgs_flow(
     data_dir: str = "data",
     force_refresh: bool = False,
 ) -> pd.DataFrame:
-    """Download daily streamflow with intelligent caching and gap detection."""
+    """
+    Download daily streamflow with intelligent caching and gap detection.
+    """
     required_start = datetime.strptime(start_date, "%Y-%m-%d")
     required_end = datetime.strptime(end_date, "%Y-%m-%d")
 
     cache = load_cache(gage_id, data_dir)
     now = datetime.now()
 
-    # Case 1: Good cache exists
-    if not force_refresh and cache and is_cache_fresh(cache):
-        df = pd.DataFrame(cache.get("data", []))
-        if not df.empty:
-            df["time"] = pd.to_datetime(df["time"])
-            requested = df[
-                (df["time"] >= required_start) & (df["time"] <= required_end)
-            ]
+    def _to_df(c: dict | None) -> pd.DataFrame:
+        if not c or "data" not in c:
+            return pd.DataFrame()
+        df = pd.DataFrame(c["data"])
+        if df.empty:
+            return df
+        df["time"] = pd.to_datetime(df["time"]).dt.normalize()
+        return df
 
-            # Only use cache if we have decent coverage for the analysis date
+    cached_df = _to_df(cache)
+
+    # ------------------------------------------------------------------
+    # Case 1: Cache is usable as-is
+    # ------------------------------------------------------------------
+    if not force_refresh and not cached_df.empty and is_cache_fresh(cache):
+        cache_end = cached_df["time"].max()
+        # CRITICAL: must actually contain data on/after the analysis day
+        covers_end = cache_end >= required_end
+
+        if covers_end:
+            requested = cached_df[
+                (cached_df["time"] >= required_start)
+                & (cached_df["time"] <= required_end)
+            ]
+            # Prefer returning the exact window; fall back only if the
+            # historical POR check still says we have enough depth
             if not requested.empty or has_sufficient_por(
                 cache, required_start, required_end
             ):
                 logger.debug(
-                    f"Using cached data for gage {gage_id} ({len(requested)} records in period)"
+                    f"Using cached data for gage {gage_id} "
+                    f"({len(requested)} records in period, "
+                    f"cache ends {cache_end.date()})"
                 )
-                return requested if not requested.empty else df
+                return requested if not requested.empty else cached_df
 
-    # Determine what to download
-    download_start = required_start
-    if cache and not force_refresh and is_cache_fresh(cache):
-        cached_df = pd.DataFrame(cache["data"])
-        cached_df["time"] = pd.to_datetime(cached_df["time"])
-
-        # Find gaps in the required period
-        all_dates = pd.date_range(required_start, required_end, freq="D")
-        cached_dates = cached_df["time"].dt.normalize()
-        missing_dates = all_dates[~all_dates.isin(cached_dates)]
-
-        if len(missing_dates) == 0:
-            return cached_df[
-                (cached_df["time"] >= required_start)
-                & (cached_df["time"] <= required_end)
-            ]
-
-        # Download only missing data + some buffer
-        download_start = missing_dates.min() - timedelta(days=30)  # buffer
+    # ------------------------------------------------------------------
+    # Case 2: Need to download / extend
+    # ------------------------------------------------------------------
+    if not cached_df.empty and not force_refresh:
+        last_cached = cached_df["time"].max()
+        # Small backward buffer catches late revisions / missing days
+        download_start = max(required_start, last_cached - timedelta(days=7))
+        # Safety: if somehow the cache already covers the end we still
+        # re-fetch the recent window (should be rare after the check above)
+        if last_cached >= required_end:
+            download_start = max(required_start, required_end - timedelta(days=45))
     else:
         download_start = datetime(1950, 1, 1)
 
@@ -157,7 +186,8 @@ def download_usgs_flow(
 
     try:
         logger.debug(
-            f"Downloading USGS flow for {gage_id} from {download_start.date()}"
+            f"Downloading USGS flow for {gage_id} from {download_start.date()} "
+            f"to {end_date}"
         )
         resp = requests.get(url, params=params, timeout=30)
         resp.raise_for_status()
@@ -182,46 +212,57 @@ def download_usgs_flow(
             download_date = now
 
             # Merge with existing cache
-            if cache and cache.get("data"):
-                old_df = pd.DataFrame(cache["data"])
-                old_df["time"] = pd.to_datetime(old_df["time"]).dt.normalize()
-                combined = pd.concat([old_df, new_df], ignore_index=True)
+            if not cached_df.empty:
+                combined = pd.concat([cached_df, new_df], ignore_index=True)
             else:
                 combined = new_df
 
             # Remove duplicates and sort
-            combined = combined.drop_duplicates(subset=["time"]).sort_values("time")
+            combined = (
+                combined.drop_duplicates(subset=["time"])
+                .sort_values("time")
+                .reset_index(drop=True)
+            )
 
             save_cache(gage_id, combined, download_date, data_dir)
             logger.debug(
-                f"Updated cache for {gage_id} with {len(combined)} total records"
+                f"Updated cache for {gage_id} with {len(combined)} total records "
+                f"(ends {combined['time'].max().date()})"
             )
 
-            return combined[
+            result = combined[
                 (combined["time"] >= required_start)
                 & (combined["time"] <= required_end)
             ]
 
+            # Final safety: if the exact analysis day is still missing,
+            # log and return empty so the caller does not silently skip
+            if result.empty or result["time"].max() < required_end:
+                logger.warning(
+                    f"After download, gage {gage_id} still lacks data for {end_date}"
+                )
+                return pd.DataFrame()
+
+            return result
+
     except Exception as e:
         logger.debug(f"Failed to download USGS data for {gage_id}: {e}")
 
-    # Fallback to cache even if incomplete
-    if cache and cache.get("data"):
-        df = pd.DataFrame(cache["data"])
-        df["time"] = pd.to_datetime(df["time"])
-        return df[(df["time"] >= required_start) & (df["time"] <= required_end)]
+    # ------------------------------------------------------------------
+    # Fallback: return whatever we still have from cache (may be incomplete)
+    # ------------------------------------------------------------------
+    if not cached_df.empty:
+        fallback = cached_df[
+            (cached_df["time"] >= required_start) & (cached_df["time"] <= required_end)
+        ]
+        if not fallback.empty:
+            logger.warning(
+                f"Using incomplete/stale cache for {gage_id} "
+                f"(ends {cached_df['time'].max().date()})"
+            )
+            return fallback
 
     return pd.DataFrame()
-
-
-def is_cache_fresh(cache: dict) -> bool:
-    """Check if cache is less than 30 days old."""
-    if not cache or "download_date" not in cache:
-        return False
-    download_date = datetime.fromisoformat(
-        cache["download_date"].replace("Z", "+00:00")
-    )
-    return (datetime.now() - download_date) <= timedelta(days=30)
 
 
 def get_special_region(lat: float, lon: float, shapefile_path: str):
