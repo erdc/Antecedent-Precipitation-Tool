@@ -87,21 +87,34 @@ def _plot_precip_page(
     wimp_data: Dict,
     pdf: PdfPages,
     data_dir: str = "data",
+    debug_behavior: bool = False,
 ):
     """Creates the precipitation page for the PDF report."""
+    if not debug_behavior:
+        # hide the streamflow for now, just on the precip page
+        usgs_data = None
+        nwm_data = None
+
     daily_precip = dict_to_series(precip_data.get("daily_precip"))
     rolling_total = dict_to_series(precip_data.get("rolling_total"))
     normal_low = dict_to_series(precip_data.get("normal_low"))
     normal_high = dict_to_series(precip_data.get("normal_high"))
 
     obs_date = datetime.strptime(precip_data["obs_date"], "%Y-%m-%d")
-    graph_end = datetime.strptime(precip_data["graph_end"], "%Y-%m-%d")
+    stored_graph_end = datetime.strptime(precip_data["graph_end"], "%Y-%m-%d")
 
-    if obs_date.month >= 10:
-        current_wy_start = datetime(obs_date.year, 10, 1)
+    if debug_behavior:
+        # Original (preferred) water-year window: previous WY start through stored graph_end
+        if obs_date.month >= 10:
+            current_wy_start = datetime(obs_date.year, 10, 1)
+        else:
+            current_wy_start = datetime(obs_date.year - 1, 10, 1)
+        graph_start = datetime(current_wy_start.year - 1, 10, 1)
+        graph_end = stored_graph_end
     else:
-        current_wy_start = datetime(obs_date.year - 1, 10, 1)
-    graph_start = datetime(current_wy_start.year - 1, 10, 1)
+        # Restricted window: six months backward and six months forward from obs_date
+        graph_start = (pd.Timestamp(obs_date) - pd.DateOffset(months=6)).to_pydatetime()
+        graph_end = (pd.Timestamp(obs_date) + pd.DateOffset(months=6)).to_pydatetime()
 
     if not daily_precip.empty and graph_start < daily_precip.index[0]:
         graph_start = daily_precip.index[0].to_pydatetime()
@@ -496,8 +509,18 @@ def generate_daily_pdf(
     output_dir: str,
     data_dir: str = "data",
     analysis_types: list = None,
+    debug_behavior: bool = False,
 ):
-    """Generate a single daily PDF report."""
+    """Generate a single daily PDF report.
+
+    Only sources named in ``analysis_types`` are loaded.  ``None`` keeps the
+    legacy “load whatever files exist” behavior.  An explicit list is a
+    whitelist (case-insensitive): precip, pdsi, usgs, nwm, wimp.
+
+    Precip files are chosen in order: GHCN if present, otherwise Gridded.
+    Missing precip is a warning, not a hard stop, so streamflow-only PDFs
+    can still be written.
+    """
     coord_directory = _coord_str(lat, lon)
     pdf_dir = os.path.join(output_dir, coord_directory)
     data_path = os.path.join(pdf_dir, "data")
@@ -505,17 +528,47 @@ def generate_daily_pdf(
     date_str = analysis_date.strftime("%Y-%m-%d")
     pdf_path = os.path.join(pdf_dir, f"{date_str}.pdf")
 
-    # Load data
-    pdsi_data = _load_json_if_exists(os.path.join(data_path, f"{date_str}-PDSI.json"))
-    usgs_data = _load_json_if_exists(os.path.join(data_path, f"{date_str}-USGS.json"))
-    nwm_data = _load_json_if_exists(os.path.join(data_path, f"{date_str}-NWM.json"))
-    wimp_data = _load_json_if_exists(os.path.join(data_path, f"{date_str}-WIMP.json"))
+    known_types = {"precip", "pdsi", "usgs", "nwm", "wimp"}
+    if analysis_types is None:
+        requested = set(known_types)
+    else:
+        requested = {str(t).lower() for t in analysis_types}
 
-    precip_files = [
-        f
-        for f in glob.glob(os.path.join(data_path, f"{date_str}-*.json"))
-        if not any(x in f for x in ["-PDSI", "-USGS", "-NWM", "-WIMP"])
-    ]
+    # Load only requested sources.  Skipped types stay {} so downstream
+    # `if data:` checks and .get() calls keep working.
+    pdsi_data = (
+        _load_json_if_exists(os.path.join(data_path, f"{date_str}-PDSI.json"))
+        if "pdsi" in requested
+        else {}
+    )
+    usgs_data = (
+        _load_json_if_exists(os.path.join(data_path, f"{date_str}-USGS.json"))
+        if "usgs" in requested
+        else {}
+    )
+    nwm_data = (
+        _load_json_if_exists(os.path.join(data_path, f"{date_str}-NWM.json"))
+        if "nwm" in requested
+        else {}
+    )
+    wimp_data = (
+        _load_json_if_exists(os.path.join(data_path, f"{date_str}-WIMP.json"))
+        if "wimp" in requested
+        else {}
+    )
+
+    precip_files = []
+    if "precip" in requested:
+        ghcn_path = os.path.join(data_path, f"{date_str}-GHCN.json")
+        gridded_path = os.path.join(data_path, f"{date_str}-Gridded.json")
+        if os.path.exists(ghcn_path):
+            precip_files = [ghcn_path]
+        elif os.path.exists(gridded_path):
+            precip_files = [gridded_path]
+        else:
+            logger.warning(
+                f"No GHCN or Gridded precip data found for {date_str} at {lat}, {lon}"
+            )
 
     if not precip_files and not usgs_data and not nwm_data:
         logger.warning(f"No data files found for {date_str} at {lat}, {lon}")
@@ -525,8 +578,16 @@ def generate_daily_pdf(
         for jfile in sorted(precip_files):
             with open(jfile) as f:
                 precip_data = json.load(f)
+
             _plot_precip_page(
-                precip_data, pdsi_data, usgs_data, nwm_data, wimp_data, pdf, data_dir
+                precip_data=precip_data,
+                pdsi_data=pdsi_data,
+                usgs_data=usgs_data,
+                nwm_data=nwm_data,
+                wimp_data=wimp_data,
+                pdf=pdf,
+                data_dir=data_dir,
+                debug_behavior=debug_behavior,
             )
 
         if usgs_data or nwm_data:
@@ -600,6 +661,7 @@ def generate_pdf(message: Dict[str, Any]):
         output_dir=message["output_dir"],
         data_dir=message.get("data_dir", "data"),
         analysis_types=message.get("analysis_types"),
+        debug_behavior=message.get("debug_behavior", False),
     )
 
 
