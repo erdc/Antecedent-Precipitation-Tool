@@ -167,13 +167,47 @@ class AreaAdapter:
             logger.error("No valid sample points after parsing – aborting")
             return None
 
-        # Final merge step
+        # Build summary metadata from the sampler + original request so the
+        # batch PDF can show watershed size, scope, gridded flag, etc.
+        analysis_date = message.get("analysis_date")
+        if hasattr(analysis_date, "strftime"):
+            date_label = analysis_date.strftime("%Y-%m-%d")
+        else:
+            date_label = str(analysis_date) if analysis_date else "—"
+
+        if message.get("custom_polygon"):
+            geographic_scope = "Custom polygon"
+        elif message.get("huc_level") is not None:
+            geographic_scope = f"HUC{message['huc_level']}"
+        else:
+            geographic_scope = "Watershed sampling"
+
+        summary_meta = {
+            "title": (
+                f"Antecedent Precipitation – "
+                f"{sampler_result.get('name') or huc_id} Sampling Summary"
+            ),
+            "site_lat": lat,
+            "site_lon": lon,
+            "observation_date": date_label,
+            "geographic_scope": geographic_scope,
+            "huc_id": huc_id,
+            "huc_size": sampler_result.get("area_sq_miles"),
+            "used_gridded": "Yes" if message.get("gridded") else "No",
+        }
+
+        # Final PDF merge (regenerates under analysis_types, then summary page)
         follow_ups.append(
             {
                 "message_type": "merge_huc_pdfs",
                 "output_dirs": generated_output_dirs,
                 "base_output_dir": base_output_dir,
                 "huc_id": huc_id,
+                "analysis_date": analysis_date,
+                "data_dir": data_dir,
+                "analysis_types": analysis_types,
+                "debug_behavior": message.get("debug_behavior", False),
+                "summary_meta": summary_meta,
             }
         )
 
@@ -181,7 +215,7 @@ class AreaAdapter:
             {
                 "message_type": "aggregate_huc_results",
                 "output_dirs": generated_output_dirs,
-                "base_output_dir": batch_root,  # Correct directory for the output file
+                "base_output_dir": batch_root,
                 "huc_id": huc_id,
                 "analysis_date": analysis_date,
             }
@@ -201,7 +235,7 @@ class AreaAdapter:
         Collects results from all sampled points in a HUC analysis and writes
         the final Sampling Results.csv file.
         """
-        logger.info(f"Aggregating results for HUC {message['huc_id']}")
+        logger.debug(f"Aggregating results for HUC {message['huc_id']}")
         results = []
 
         def _load_json_if_exists(path: str) -> dict:

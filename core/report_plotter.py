@@ -24,7 +24,14 @@ from pypdf import PdfWriter
 from core.data_handler import _compute_precip_condition, _coord_str, dict_to_series
 
 logger = logging.getLogger(__name__)
-
+_CONDITION_COLORS = {
+    "Drier than Normal": (0.8, 0.5, 0.5),
+    "Normal Conditions": (0.5, 0.8, 0.5),
+    "Wetter than Normal": (0.4, 0.5, 0.8),
+}
+_LIGHT_GREY = (0.85, 0.85, 0.85)
+_WHITE = (1.0, 1.0, 1.0)
+_PAGE_BG = (0.77, 0.77, 0.77)
 
 # ====================== UTILITY FUNCTIONS ======================
 
@@ -74,6 +81,167 @@ def _extract_meta(precip_files, usgs_data, nwm_data, lat, lon, analysis_date):
         condition, _ = _compute_precip_condition(p)
         meta["precip_condition"] = condition
     return meta
+
+
+def _condition_from_score(score):
+    """Map antecedent total_score to label + RGB, matching precip page logic."""
+    if score is None or (isinstance(score, float) and np.isnan(score)):
+        return "No Data", _WHITE
+    try:
+        score = float(score)
+    except (TypeError, ValueError):
+        return "No Data", _WHITE
+    if score < 10:
+        return "Drier than Normal", _CONDITION_COLORS["Drier than Normal"]
+    if score <= 14:
+        return "Normal Conditions", _CONDITION_COLORS["Normal Conditions"]
+    return "Wetter than Normal", _CONDITION_COLORS["Wetter than Normal"]
+
+
+def _load_precip_summary(json_path: str) -> Dict[str, Any]:
+    """Pull score/condition/coords/date from one precip JSON (GHCN or Gridded)."""
+    with open(json_path) as f:
+        payload = json.load(f)
+
+    summary = payload.get("antecedent_score_summary") or {}
+    score = summary.get("total_score")
+    condition = summary.get("condition")
+    if condition is None:
+        condition, _ = _condition_from_score(score)
+        if score is None:
+            # last-resort recompute from series if present
+            try:
+                condition, score = _compute_precip_condition(payload)
+            except Exception:
+                condition, score = "No Data", None
+
+    stations = payload.get("local_stations_info") or []
+    is_gridded = bool(stations and stations[0].get("id") == "GRIDDED")
+    source = "Gridded" if is_gridded else "GHCN"
+    if "-Gridded" in os.path.basename(json_path):
+        source = "Gridded"
+    elif "-GHCN" in os.path.basename(json_path):
+        source = "GHCN"
+
+    return {
+        "lat": payload.get("lat"),
+        "lon": payload.get("lon"),
+        "obs_date": payload.get("obs_date"),
+        "score": score,
+        "condition": condition,
+        "source": source,
+        "elev": payload.get("elev"),
+        "path": json_path,
+    }
+
+
+def _collect_summaries_from_folder(
+    folder: str,
+    want_precip: bool = True,
+    obs_date: str = None,
+) -> list:
+    """Precip-point summaries under folder/data.
+
+    If ``obs_date`` is given (YYYY-MM-DD), only that day is collected.
+    """
+    if not want_precip:
+        return []
+    data_path = os.path.join(folder, "data")
+    if not os.path.isdir(data_path):
+        return []
+
+    rows = []
+    # Prefer GHCN over Gridded when both exist for the same date
+    by_date = {}
+    for f in glob.glob(os.path.join(data_path, "????-??-??-*.json")):
+        name = os.path.basename(f)
+        if any(tag in name for tag in ("-PDSI", "-USGS", "-NWM", "-WIMP")):
+            continue
+        date_part = name[:10]
+        try:
+            datetime.strptime(date_part, "%Y-%m-%d")
+        except ValueError:
+            continue
+        if obs_date is not None and date_part != obs_date:
+            continue
+        is_ghcn = "-GHCN" in name
+        is_gridded = "-Gridded" in name
+        prev = by_date.get(date_part)
+        if prev is None:
+            by_date[date_part] = f
+        elif is_ghcn:
+            by_date[date_part] = f
+        elif is_gridded and "-GHCN" not in os.path.basename(prev):
+            by_date[date_part] = f
+
+    for date_part in sorted(by_date):
+        try:
+            rows.append(_load_precip_summary(by_date[date_part]))
+        except Exception as e:
+            logger.warning(
+                "Failed to load precip summary %s: %s", by_date[date_part], e
+            )
+    return rows
+
+
+def _aggregate_batch_stats(rows: list) -> Dict[str, Any]:
+    """Average score, preliminary determination, pie slices, breakdown table."""
+    scores = []
+    condition_counts = {
+        "Drier than Normal": 0,
+        "Normal Conditions": 0,
+        "Wetter than Normal": 0,
+    }
+    table_vals = [["Lat", "Lon", "Date", "Score", "Condition", "Source"]]
+    table_colors = [[_LIGHT_GREY] * 6]
+
+    for r in rows:
+        score = r.get("score")
+        condition = r.get("condition") or "No Data"
+        if score is not None:
+            try:
+                scores.append(float(score))
+            except (TypeError, ValueError):
+                pass
+        if condition in condition_counts:
+            condition_counts[condition] += 1
+
+        color = _CONDITION_COLORS.get(condition, _WHITE)
+        table_vals.append(
+            [
+                f"{r.get('lat'):.4f}" if r.get("lat") is not None else "—",
+                f"{r.get('lon'):.4f}" if r.get("lon") is not None else "—",
+                str(r.get("obs_date") or "—"),
+                f"{float(score):.0f}" if score is not None else "—",
+                condition,
+                r.get("source") or "—",
+            ]
+        )
+        table_colors.append([_WHITE, _WHITE, _WHITE, _WHITE, color, _WHITE])
+
+    avg_score = float(np.mean(scores)) if scores else None
+    prelim, prelim_color = _condition_from_score(avg_score)
+
+    pie_labels, pie_sizes, pie_colors = [], [], []
+    for label in ("Drier than Normal", "Normal Conditions", "Wetter than Normal"):
+        n = condition_counts[label]
+        if n > 0:
+            pie_labels.append(f"{label} ({n})")
+            pie_sizes.append(n)
+            pie_colors.append(_CONDITION_COLORS[label])
+
+    return {
+        "avg_score": avg_score,
+        "prelim": prelim,
+        "prelim_color": prelim_color,
+        "pie_labels": pie_labels,
+        "pie_sizes": pie_sizes,
+        "pie_colors": pie_colors,
+        "table_vals": table_vals,
+        "table_colors": table_colors,
+        "n_points": len(rows),
+        "n_scored": len(scores),
+    }
 
 
 # ====================== PDF PLOTTING ======================
@@ -146,26 +314,6 @@ def _plot_precip_page(
 
     for ax in [ax2, ax3, ax4]:
         ax.axis("off")
-
-    # Logo - use the data_dir passed from the caller (GUI / dispatcher)
-    try:
-        logo_file = os.path.join(data_dir, "RD_3_9.png")
-        logo = plt.imread(logo_file)
-
-        # Scale factor
-        scale = 1.4
-
-        # simple nearest-neighbor upscale with numpy
-        if scale != 1.0:
-            h, w = logo.shape[:2]
-            new_h, new_w = int(h * scale), int(w * scale)
-            y_idx = (np.arange(new_h) / scale).astype(int)
-            x_idx = (np.arange(new_w) / scale).astype(int)
-            logo = logo[y_idx][:, x_idx]
-
-        fig.figimage(X=logo, xo=150, yo=16)
-    except Exception as e:
-        logger.warning(f"Could not load logo from {logo_file}: {e}")
 
     # Main graph (ax1)
     ax1.xaxis.set_major_locator(mdates.MonthLocator())
@@ -380,6 +528,56 @@ def _plot_precip_page(
     plt.subplots_adjust(
         wspace=0.0, hspace=0.08, left=0.047, bottom=0.08, top=0.968, right=0.99
     )
+
+    # Logo: measure drawn tables, fill the leftover cell against their edges
+    try:
+        logo_file = os.path.join(data_dir, "RD_3_9.png")
+        logo = plt.imread(logo_file)
+
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        inv = fig.transFigure.inverted()
+
+        def _fig_box(artist):
+            bb = artist.get_window_extent(renderer)
+            (x0, y0), (x1, y1) = inv.transform(
+                np.array([[bb.x0, bb.y0], [bb.x1, bb.y1]])
+            )
+            return x0, y0, x1, y1
+
+        gap = 0.004  # ~0.7 mm at 17x11 in — razor thin
+        left = ax3.get_position().x0
+        bottom = 0.006
+
+        dx0, dy0, dx1, dy1 = _fig_box(ax3.tables[0])
+        top = dy0 - gap
+
+        if ax4.tables:
+            sx0, sy0, sx1, sy1 = _fig_box(ax4.tables[0])
+            right = sx0 - gap
+        elif ax2.tables:
+            rx0, ry0, rx1, ry1 = _fig_box(ax2.tables[0])
+            right = rx0 - gap
+        else:
+            right = 0.45
+
+        width = max(0.05, right - left)
+        height = max(0.05, top - bottom)
+
+        ax_logo = fig.add_axes([left, bottom, width, height])
+        ax_logo.set_facecolor(fig.get_facecolor())
+        ax_logo.imshow(logo, interpolation="bilinear")
+        ax_logo.set_aspect("equal")
+        ax_logo.set_anchor("SW")
+        ax_logo.axis("off")
+        ax_logo.set_zorder(10)
+    except Exception as e:
+        logger.warning(
+            "Could not load logo from %s: %s",
+            os.path.join(data_dir, "RD_3_9.png"),
+            e,
+        )
+
     pdf.savefig(fig, facecolor=fig.get_facecolor())
     plt.close(fig)
 
@@ -405,7 +603,7 @@ def _plot_streamflow_page(
     # ------------------------------------------------------------------
     ax_usgs_table = fig.add_axes([0.035, 0.575, 0.930, 0.350])
     ax_nwm_table = fig.add_axes([0.035, 0.210, 0.930, 0.320])
-    ax_notes = fig.add_axes([0.035, 0.040, 0.930, 0.135])
+    ax_notes = fig.add_axes([0.035, 0.055, 0.930, 0.130])
 
     for ax in (ax_usgs_table, ax_nwm_table, ax_notes):
         ax.axis("off")
@@ -495,8 +693,207 @@ def _plot_streamflow_page(
     t3.set_fontsize(10.0)
     t3.auto_set_font_size(False)
 
+    # Footnote: clarify what "Normal" means for the Condition column
+    fig.text(
+        0.50,
+        0.018,
+        "Note: “Normal” streamflow conditions correspond to the 25th-75th percentile "
+        "of the historic same-day record.",
+        ha="center",
+        va="bottom",
+        fontsize=9,
+        color="0.35",
+        style="italic",
+    )
+
     pdf.savefig(fig, facecolor=fig.get_facecolor())
     plt.close(fig)
+
+
+def _plot_batch_summary_page(
+    rows: list,
+    meta: Dict[str, Any],
+    out_path: str,
+    data_dir: str = "data",
+):
+    """
+    One-page watershed / batch summary PDF written to out_path.
+
+    meta keys (all optional):
+      title, site_lat, site_lon, observation_date, geographic_scope,
+      huc_id, huc_size, used_gridded
+    """
+    stats = _aggregate_batch_stats(rows)
+    light_grey, white = _LIGHT_GREY, _WHITE
+
+    fig = plt.figure(figsize=(17.0, 11.0), dpi=140, facecolor=_PAGE_BG)
+
+    # Layout: left column tables, right pie, bottom breakdown
+    ax_inputs = fig.add_axes([0.04, 0.72, 0.42, 0.20])
+    ax_intermediate = fig.add_axes([0.04, 0.52, 0.42, 0.18])
+    ax_prelim = fig.add_axes([0.04, 0.36, 0.42, 0.14])
+    ax_breakdown = fig.add_axes([0.04, 0.04, 0.92, 0.30])
+    ax_pie = fig.add_axes([0.52, 0.42, 0.42, 0.48])
+
+    for ax in (ax_inputs, ax_intermediate, ax_prelim, ax_breakdown, ax_pie):
+        ax.axis("off")
+
+    title = meta.get("title") or "Antecedent Precipitation - Batch / Watershed Summary"
+    fig.suptitle(title, fontsize=18, fontweight="bold", y=0.97)
+    fig.text(
+        0.97,
+        0.97,
+        f"Generated {datetime.today().strftime('%Y-%m-%d')}",
+        ha="right",
+        va="top",
+        fontsize=10,
+        color="0.3",
+    )
+
+    # ---- User inputs ----
+    ax_inputs.set_title(
+        "User Inputs", fontsize=13, fontweight="bold", loc="left", pad=6
+    )
+    lat = meta.get("site_lat")
+    lon = meta.get("site_lon")
+    coord_str = (
+        f"{float(lat):.6f}, {float(lon):.6f}"
+        if lat is not None and lon is not None
+        else "—"
+    )
+    inputs_vals = [
+        ["Coordinates", coord_str],
+        ["Observation Date", str(meta.get("observation_date") or "—")],
+        ["Geographic Scope", str(meta.get("geographic_scope") or "—")],
+        ["Used Gridded Precipitation", str(meta.get("used_gridded", "—"))],
+    ]
+    t1 = ax_inputs.table(
+        cellText=inputs_vals,
+        cellColours=[[light_grey, white]] * len(inputs_vals),
+        colWidths=[0.48, 0.52],
+        loc="upper center",
+    )
+    t1.set_fontsize(10)
+    t1.auto_set_font_size(False)
+
+    # ---- Intermediate ----
+    ax_intermediate.set_title(
+        "Intermediate Data", fontsize=13, fontweight="bold", loc="left", pad=6
+    )
+    huc = meta.get("huc_id")
+    try:
+        float(huc)
+        watershed_label = "Hydrologic Unit Code"
+    except (TypeError, ValueError):
+        watershed_label = "Custom Watershed Name" if huc else "Watershed ID"
+
+    huc_size = meta.get("huc_size")
+    size_str = f"{huc_size} mi²" if huc_size is not None else "—"
+    inter_vals = [
+        [watershed_label, str(huc) if huc is not None else "—"],
+        ["Watershed Size", size_str],
+        ["Sampling Points / Days", str(stats["n_points"])],
+        ["With Valid Score", str(stats["n_scored"])],
+    ]
+    t2 = ax_intermediate.table(
+        cellText=inter_vals,
+        cellColours=[[light_grey, white]] * len(inter_vals),
+        colWidths=[0.48, 0.52],
+        loc="upper center",
+    )
+    t2.set_fontsize(10)
+    t2.auto_set_font_size(False)
+
+    # ---- Preliminary result ----
+    ax_prelim.set_title(
+        "Preliminary Result", fontsize=13, fontweight="bold", loc="left", pad=6
+    )
+    avg_disp = f"{stats['avg_score']:.2f}" if stats["avg_score"] is not None else "—"
+    prelim_vals = [
+        ["Average Antecedent Precipitation Score", avg_disp],
+        ["Preliminary Determination", stats["prelim"]],
+    ]
+    prelim_colors = [
+        [light_grey, white],
+        [light_grey, stats["prelim_color"]],
+    ]
+    t3 = ax_prelim.table(
+        cellText=prelim_vals,
+        cellColours=prelim_colors,
+        colWidths=[0.62, 0.38],
+        loc="upper center",
+    )
+    t3.set_fontsize(10)
+    t3.auto_set_font_size(False)
+
+    # ---- Pie ----
+    ax_pie.set_title("Condition Distribution", fontsize=13, fontweight="bold", pad=8)
+    if stats["pie_sizes"]:
+        wedges, texts, autotexts = ax_pie.pie(
+            stats["pie_sizes"],
+            colors=stats["pie_colors"],
+            labels=stats["pie_labels"],
+            autopct="%1.1f%%",
+            startangle=90,
+            textprops={"fontsize": 9},
+        )
+        for at in autotexts:
+            at.set_color("white")
+            at.set_fontweight("bold")
+        ax_pie.axis("equal")
+    else:
+        ax_pie.text(0.5, 0.5, "No scored points", ha="center", va="center", fontsize=12)
+
+    # ---- Breakdown table (cap rows so it fits) ----
+    ax_breakdown.set_title(
+        "Sampling Point / Day Breakdown",
+        fontsize=13,
+        fontweight="bold",
+        loc="left",
+        pad=6,
+    )
+    max_rows = 18  # header + 17 data rows
+    vals = stats["table_vals"][:max_rows]
+    cols = stats["table_colors"][:max_rows]
+    if len(stats["table_vals"]) > max_rows:
+        vals = vals + [
+            ["…", "…", "…", "…", f"+{len(stats['table_vals']) - max_rows} more", "…"]
+        ]
+        cols = cols + [[white] * 6]
+
+    t4 = ax_breakdown.table(
+        cellText=vals,
+        cellColours=cols,
+        colWidths=[0.14, 0.14, 0.14, 0.10, 0.28, 0.12],
+        loc="upper center",
+    )
+    t4.set_fontsize(9)
+    t4.auto_set_font_size(False)
+
+    with PdfPages(out_path) as pdf:
+        pdf.savefig(fig, facecolor=fig.get_facecolor())
+    plt.close(fig)
+    logger.info("Wrote batch summary page: %s (%s rows)", out_path, stats["n_points"])
+
+
+def _append_summary_if_any(
+    writer: PdfWriter, rows: list, meta: dict, data_dir: str, dest_dir: str
+):
+    """Build summary PDF and append to an open PdfWriter. No-op if rows empty."""
+    if not rows:
+        logger.info("No precip summaries available; skipping batch summary page")
+        return
+    summary_path = os.path.join(dest_dir, "_batch_summary_tmp.pdf")
+    try:
+        _plot_batch_summary_page(rows, meta or {}, summary_path, data_dir=data_dir)
+        if os.path.exists(summary_path):
+            writer.append(summary_path)
+    finally:
+        if os.path.exists(summary_path):
+            try:
+                os.remove(summary_path)
+            except OSError:
+                pass
 
 
 # ====================== PDF GENERATION AND MERGING ======================
@@ -608,16 +1005,20 @@ def merge_daily_pdfs(
     data_dir: str = "data",
     analysis_types: list = None,
     debug_behavior: bool = False,
+    summary_meta: dict = None,
 ):
-    """Rebuild each daily PDF from JSON under analysis_types, then merge.
-
-    Re-generation is intentional: stale daily PDFs from a previous run that
-    included USGS/NWM will otherwise leave orphan streamflow pages in the
-    batch file even when the current analysis_types omit them.
-    """
+    """Rebuild each daily PDF from JSON under analysis_types, then merge + summary."""
     coord_directory = _coord_str(lat, lon)
     pdf_dir = os.path.join(output_dir, coord_directory)
     os.makedirs(pdf_dir, exist_ok=True)
+
+    known = {"precip", "pdsi", "usgs", "nwm", "wimp"}
+    requested = (
+        set(known)
+        if analysis_types is None
+        else {str(t).lower() for t in analysis_types}
+    )
+    want_precip = "precip" in requested
 
     pdf_files = []
     day_count = (end_date - start_date).days + 1
@@ -644,31 +1045,67 @@ def merge_daily_pdfs(
     for pdf in pdf_files:
         merger.append(pdf)
 
+    # Summary page from this location's precip JSON
+    rows = _collect_summaries_from_folder(pdf_dir, want_precip=want_precip)
+    meta = {
+        "title": "Antecedent Precipitation - Location Batch Summary",
+        "site_lat": lat,
+        "site_lon": lon,
+        "observation_date": (
+            f"{start_date.strftime('%Y-%m-%d')} → {end_date.strftime('%Y-%m-%d')}"
+        ),
+        "geographic_scope": "Single location (date range)",
+        "huc_id": None,
+        "huc_size": None,
+        "used_gridded": (
+            "Yes"
+            if any(r.get("source") == "Gridded" for r in rows)
+            else ("No" if rows else "—")
+        ),
+    }
+    if summary_meta:
+        meta.update(summary_meta)
+    _append_summary_if_any(merger, rows, meta, data_dir, pdf_dir)
+
     output_path = os.path.join(pdf_dir, "Batch_Results.pdf")
     merger.write(output_path)
     merger.close()
-    logger.info(f"Merged {len(pdf_files)} PDFs into {output_path}")
+    logger.info(f"Merged {len(pdf_files)} PDFs (+ summary) into {output_path}")
 
 
 def merge_huc_batch_pdfs(
     output_dirs: list,
     base_output_dir: str,
     huc_id: str,
+    analysis_date: datetime,
     data_dir: str = "data",
     analysis_types: list = None,
     debug_behavior: bool = False,
+    summary_meta: dict = None,
 ):
-    """Regenerate per-point daily PDFs under analysis_types, then merge.
+    """Regenerate per-point PDFs for a single analysis_date, merge, then summary.
 
-    Each entry in ``output_dirs`` is expected to be a coordinate folder
-    (``{lat}_{lon}``).  Dates are discovered from ``data/YYYY-MM-DD-*.json``.
-    Every day is re-run through ``generate_daily_pdf`` so USGS/NWM pages only
-    appear when those types are in the whitelist.  Folders whose names cannot
-    be parsed as lat/lon fall back to appending existing daily PDFs.
+    Only the given date is processed (HUC / area sampling is a same-day product).
+    Output filename includes the date: ``{YYYY-MM-DD}-HUC_{huc_id}_Batch_Report.pdf``.
     """
+    if analysis_date is None:
+        raise ValueError("merge_huc_batch_pdfs requires analysis_date")
+    if not isinstance(analysis_date, datetime):
+        analysis_date = datetime.strptime(str(analysis_date), "%Y-%m-%d")
+    date_str = analysis_date.strftime("%Y-%m-%d")
+
     writer = PdfWriter()
     regenerated = 0
     fallback_appended = 0
+    all_rows = []
+
+    known = {"precip", "pdsi", "usgs", "nwm", "wimp"}
+    requested = (
+        set(known)
+        if analysis_types is None
+        else {str(t).lower() for t in analysis_types}
+    )
+    want_precip = "precip" in requested
 
     for folder in output_dirs:
         folder = os.path.normpath(folder)
@@ -680,76 +1117,83 @@ def merge_huc_batch_pdfs(
         except (ValueError, AttributeError):
             logger.warning(
                 "Could not parse lat/lon from folder name %r; "
-                "appending existing daily PDFs without regeneration",
+                "appending existing daily PDF for %s without regeneration",
                 basename,
+                date_str,
             )
-            for pdf_path in sorted(glob.glob(os.path.join(folder, "*.pdf"))):
-                name = os.path.basename(pdf_path)
-                if "HUC" in name or "Batch_Results" in name:
-                    continue
-                writer.append(pdf_path)
+            candidate = os.path.join(folder, f"{date_str}.pdf")
+            if os.path.exists(candidate):
+                writer.append(candidate)
                 fallback_appended += 1
             continue
 
-        # Discover analysis dates from stored JSON, not from possibly-stale PDFs
-        data_path = os.path.join(folder, "data")
-        dates = set()
-        if os.path.isdir(data_path):
-            for f in glob.glob(os.path.join(data_path, "????-??-??-*.json")):
-                date_part = os.path.basename(f)[:10]
-                try:
-                    datetime.strptime(date_part, "%Y-%m-%d")
-                    dates.add(date_part)
-                except ValueError:
-                    continue
-
-        if not dates:
-            logger.warning(
-                "No dated JSON under %s; appending any existing daily PDFs",
-                data_path,
-            )
-            for pdf_path in sorted(glob.glob(os.path.join(folder, "????-??-??.pdf"))):
-                name = os.path.basename(pdf_path)
-                if "HUC" in name or "Batch_Results" in name:
-                    continue
-                writer.append(pdf_path)
-                fallback_appended += 1
-            continue
-
-        # parent of the coord folder is the output_dir generate_daily_pdf expects
         parent_output = os.path.dirname(folder)
-        for date_str in sorted(dates):
-            day = datetime.strptime(date_str, "%Y-%m-%d")
-            generate_daily_pdf(
-                lat=lat,
-                lon=lon,
-                analysis_date=day,
-                output_dir=parent_output,
-                data_dir=data_dir,
-                analysis_types=analysis_types,
-                debug_behavior=debug_behavior,
+        generate_daily_pdf(
+            lat=lat,
+            lon=lon,
+            analysis_date=analysis_date,
+            output_dir=parent_output,
+            data_dir=data_dir,
+            analysis_types=analysis_types,
+            debug_behavior=debug_behavior,
+        )
+        pdf_path = os.path.join(folder, f"{date_str}.pdf")
+        if os.path.exists(pdf_path):
+            writer.append(pdf_path)
+            regenerated += 1
+        else:
+            logger.warning(
+                "No PDF for %s at %s after generate_daily_pdf", date_str, basename
             )
-            pdf_path = os.path.join(folder, f"{date_str}.pdf")
-            if os.path.exists(pdf_path):
-                writer.append(pdf_path)
-                regenerated += 1
+
+        all_rows.extend(
+            _collect_summaries_from_folder(
+                folder, want_precip=want_precip, obs_date=date_str
+            )
+        )
+
+    batch_folder = os.path.join(base_output_dir, f"{huc_id}-batch")
+    os.makedirs(batch_folder, exist_ok=True)
+
+    meta = {
+        "title": f"Antecedent Precipitation – HUC {huc_id} Watershed Sampling Summary",
+        "huc_id": huc_id,
+        "observation_date": date_str,
+        "geographic_scope": "HUC / watershed sampling",
+        "used_gridded": (
+            "Yes"
+            if any(r.get("source") == "Gridded" for r in all_rows)
+            else ("No" if all_rows else "—")
+        ),
+    }
+    if all_rows:
+        meta.setdefault("site_lat", all_rows[0].get("lat"))
+        meta.setdefault("site_lon", all_rows[0].get("lon"))
+    if summary_meta:
+        meta.update(summary_meta)
+        # Keep the enforced analysis date authoritative
+        meta["observation_date"] = date_str
+
+    _append_summary_if_any(writer, all_rows, meta, data_dir, batch_folder)
 
     if len(writer.pages) > 0:
-        batch_folder = os.path.join(base_output_dir, f"{huc_id}-batch")
-        os.makedirs(batch_folder, exist_ok=True)
-        output_path = os.path.join(batch_folder, f"HUC_{huc_id}_Batch_Report.pdf")
+        output_path = os.path.join(
+            batch_folder, f"{date_str}-HUC_{huc_id}_Batch_Report.pdf"
+        )
         with open(output_path, "wb") as f_out:
             writer.write(f_out)
-        logger.info(
-            "Created consolidated HUC report: %s "
-            "(regenerated=%s, fallback_appended=%s, analysis_types=%s)",
-            output_path,
+        logger.info(f"Created consolidated HUC report: {output_path}")
+        logger.debug(
+            "regenerated=%s, fallback_appended=%s, summary_rows=%s, "
+            "analysis_types=%s, analysis_date=%s",
             regenerated,
             fallback_appended,
+            len(all_rows),
             analysis_types,
+            date_str,
         )
     else:
-        logger.warning("No PDF pages to write for HUC %s", huc_id)
+        logger.warning("No PDF pages to write for HUC %s on %s", huc_id, date_str)
 
 
 # ====================== HIGH-LEVEL ENTRY POINTS ======================
@@ -779,4 +1223,5 @@ def merge_pdfs(message: Dict[str, Any]):
         data_dir=message.get("data_dir", "data"),
         analysis_types=message.get("analysis_types"),
         debug_behavior=message.get("debug_behavior", False),
+        summary_meta=message.get("summary_meta"),
     )

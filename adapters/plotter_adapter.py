@@ -106,9 +106,11 @@ class PlotterAdapter:
                 output_dirs=message["output_dirs"],
                 base_output_dir=message["base_output_dir"],
                 huc_id=message["huc_id"],
+                analysis_date=message["analysis_date"],
                 data_dir=message.get("data_dir", "data"),
                 analysis_types=message.get("analysis_types"),
                 debug_behavior=message.get("debug_behavior", False),
+                summary_meta=message.get("summary_meta"),
             )
             return None
 
