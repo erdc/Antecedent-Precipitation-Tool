@@ -90,8 +90,7 @@ def _plot_precip_page(
     debug_behavior: bool = False,
 ):
     """Creates the precipitation page for the PDF report."""
-    if not debug_behavior:
-        # hide the streamflow for now, just on the precip page
+    if debug_behavior:
         usgs_data = None
         nwm_data = None
 
@@ -103,8 +102,8 @@ def _plot_precip_page(
     obs_date = datetime.strptime(precip_data["obs_date"], "%Y-%m-%d")
     stored_graph_end = datetime.strptime(precip_data["graph_end"], "%Y-%m-%d")
 
-    if debug_behavior:
-        # Original (preferred) water-year window: previous WY start through stored graph_end
+    if not debug_behavior:
+        # water-year window: previous WY start through stored graph_end
         if obs_date.month >= 10:
             current_wy_start = datetime(obs_date.year, 10, 1)
         else:
@@ -112,9 +111,10 @@ def _plot_precip_page(
         graph_start = datetime(current_wy_start.year - 1, 10, 1)
         graph_end = stored_graph_end
     else:
-        # Restricted window: six months backward and six months forward from obs_date
-        graph_start = (pd.Timestamp(obs_date) - pd.DateOffset(months=6)).to_pydatetime()
-        graph_end = (pd.Timestamp(obs_date) + pd.DateOffset(months=6)).to_pydatetime()
+        graph_start = (
+            pd.Timestamp(obs_date) - pd.DateOffset(months=3, days=15)
+        ).to_pydatetime()
+        graph_end = (pd.Timestamp(obs_date) + pd.DateOffset(days=5)).to_pydatetime()
 
     if not daily_precip.empty and graph_start < daily_precip.index[0]:
         graph_start = daily_precip.index[0].to_pydatetime()
@@ -600,19 +600,41 @@ def generate_daily_pdf(
 
 
 def merge_daily_pdfs(
-    lat: float, lon: float, start_date: datetime, end_date: datetime, output_dir: str
+    lat: float,
+    lon: float,
+    start_date: datetime,
+    end_date: datetime,
+    output_dir: str,
+    data_dir: str = "data",
+    analysis_types: list = None,
+    debug_behavior: bool = False,
 ):
-    """Merge all daily PDFs for a location into one Batch_Results.pdf."""
+    """Rebuild each daily PDF from JSON under analysis_types, then merge.
+
+    Re-generation is intentional: stale daily PDFs from a previous run that
+    included USGS/NWM will otherwise leave orphan streamflow pages in the
+    batch file even when the current analysis_types omit them.
+    """
     coord_directory = _coord_str(lat, lon)
     pdf_dir = os.path.join(output_dir, coord_directory)
+    os.makedirs(pdf_dir, exist_ok=True)
 
-    pdf_files = [
-        os.path.join(
-            pdf_dir, f"{(start_date + timedelta(days=d)).strftime('%Y-%m-%d')}.pdf"
+    pdf_files = []
+    day_count = (end_date - start_date).days + 1
+    for d in range(day_count):
+        day = start_date + timedelta(days=d)
+        generate_daily_pdf(
+            lat=lat,
+            lon=lon,
+            analysis_date=day,
+            output_dir=output_dir,
+            data_dir=data_dir,
+            analysis_types=analysis_types,
+            debug_behavior=debug_behavior,
         )
-        for d in range((end_date - start_date).days + 1)
-    ]
-    pdf_files = [f for f in pdf_files if os.path.exists(f)]
+        candidate = os.path.join(pdf_dir, f"{day.strftime('%Y-%m-%d')}.pdf")
+        if os.path.exists(candidate):
+            pdf_files.append(candidate)
 
     if not pdf_files:
         logger.warning("No PDFs found to merge in the date range.")
@@ -628,17 +650,89 @@ def merge_daily_pdfs(
     logger.info(f"Merged {len(pdf_files)} PDFs into {output_path}")
 
 
-def merge_huc_batch_pdfs(output_dirs: list, base_output_dir: str, huc_id: str):
-    """Merges all PDFs from a HUC analysis into a single report."""
+def merge_huc_batch_pdfs(
+    output_dirs: list,
+    base_output_dir: str,
+    huc_id: str,
+    data_dir: str = "data",
+    analysis_types: list = None,
+    debug_behavior: bool = False,
+):
+    """Regenerate per-point daily PDFs under analysis_types, then merge.
+
+    Each entry in ``output_dirs`` is expected to be a coordinate folder
+    (``{lat}_{lon}``).  Dates are discovered from ``data/YYYY-MM-DD-*.json``.
+    Every day is re-run through ``generate_daily_pdf`` so USGS/NWM pages only
+    appear when those types are in the whitelist.  Folders whose names cannot
+    be parsed as lat/lon fall back to appending existing daily PDFs.
+    """
     writer = PdfWriter()
+    regenerated = 0
+    fallback_appended = 0
+
     for folder in output_dirs:
-        pdf_files = glob.glob(os.path.join(folder, "*.pdf"))
-        for pdf_path in sorted(pdf_files):
-            if "HUC" in os.path.basename(
-                pdf_path
-            ) or "Batch_Results" in os.path.basename(pdf_path):
-                continue
-            writer.append(pdf_path)
+        folder = os.path.normpath(folder)
+        basename = os.path.basename(folder)
+
+        try:
+            lat_str, lon_str = basename.split("_", 1)
+            lat, lon = float(lat_str), float(lon_str)
+        except (ValueError, AttributeError):
+            logger.warning(
+                "Could not parse lat/lon from folder name %r; "
+                "appending existing daily PDFs without regeneration",
+                basename,
+            )
+            for pdf_path in sorted(glob.glob(os.path.join(folder, "*.pdf"))):
+                name = os.path.basename(pdf_path)
+                if "HUC" in name or "Batch_Results" in name:
+                    continue
+                writer.append(pdf_path)
+                fallback_appended += 1
+            continue
+
+        # Discover analysis dates from stored JSON, not from possibly-stale PDFs
+        data_path = os.path.join(folder, "data")
+        dates = set()
+        if os.path.isdir(data_path):
+            for f in glob.glob(os.path.join(data_path, "????-??-??-*.json")):
+                date_part = os.path.basename(f)[:10]
+                try:
+                    datetime.strptime(date_part, "%Y-%m-%d")
+                    dates.add(date_part)
+                except ValueError:
+                    continue
+
+        if not dates:
+            logger.warning(
+                "No dated JSON under %s; appending any existing daily PDFs",
+                data_path,
+            )
+            for pdf_path in sorted(glob.glob(os.path.join(folder, "????-??-??.pdf"))):
+                name = os.path.basename(pdf_path)
+                if "HUC" in name or "Batch_Results" in name:
+                    continue
+                writer.append(pdf_path)
+                fallback_appended += 1
+            continue
+
+        # parent of the coord folder is the output_dir generate_daily_pdf expects
+        parent_output = os.path.dirname(folder)
+        for date_str in sorted(dates):
+            day = datetime.strptime(date_str, "%Y-%m-%d")
+            generate_daily_pdf(
+                lat=lat,
+                lon=lon,
+                analysis_date=day,
+                output_dir=parent_output,
+                data_dir=data_dir,
+                analysis_types=analysis_types,
+                debug_behavior=debug_behavior,
+            )
+            pdf_path = os.path.join(folder, f"{date_str}.pdf")
+            if os.path.exists(pdf_path):
+                writer.append(pdf_path)
+                regenerated += 1
 
     if len(writer.pages) > 0:
         batch_folder = os.path.join(base_output_dir, f"{huc_id}-batch")
@@ -646,7 +740,16 @@ def merge_huc_batch_pdfs(output_dirs: list, base_output_dir: str, huc_id: str):
         output_path = os.path.join(batch_folder, f"HUC_{huc_id}_Batch_Report.pdf")
         with open(output_path, "wb") as f_out:
             writer.write(f_out)
-        logger.info(f"Created consolidated HUC report: {output_path}")
+        logger.info(
+            "Created consolidated HUC report: %s "
+            "(regenerated=%s, fallback_appended=%s, analysis_types=%s)",
+            output_path,
+            regenerated,
+            fallback_appended,
+            analysis_types,
+        )
+    else:
+        logger.warning("No PDF pages to write for HUC %s", huc_id)
 
 
 # ====================== HIGH-LEVEL ENTRY POINTS ======================
@@ -673,4 +776,7 @@ def merge_pdfs(message: Dict[str, Any]):
         start_date=message["start_date"],
         end_date=message["end_date"],
         output_dir=message["output_dir"],
+        data_dir=message.get("data_dir", "data"),
+        analysis_types=message.get("analysis_types"),
+        debug_behavior=message.get("debug_behavior", False),
     )

@@ -124,7 +124,7 @@ def get_ghcn_timeseries_data(
                 filepath = new_filepath
             except Exception as e:
                 if existing_files:
-                    logger.warning("Failed to download stations. Using stale cache.")
+                    logger.debug(f"Failed to download stations. Using stale cache. {e}")
                     filepath = existing_files[-1]
                 else:
                     raise e
@@ -313,14 +313,14 @@ def get_ghcn_timeseries_data(
                             f"Download failed for {station_id}, and local cached file is both "
                             "stale (>30 days) and lacks sufficient Period of Record (POR)."
                         ) from e
-                    logger.warning(
+                    logger.debug(
                         f"{station_id}: download failed ({e}), falling back to "
                         f"{os.path.basename(cached_file)}"
                     )
                     with open(cached_file, "r", encoding="utf-8") as f:
                         return _parse_dly_file(f.read())
                 else:
-                    logger.warning(
+                    logger.debug(
                         f"{station_id}: download failed and no usable cache: {e}"
                     )
                     return None

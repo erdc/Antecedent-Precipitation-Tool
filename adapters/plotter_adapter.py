@@ -94,6 +94,7 @@ class PlotterAdapter:
     def handle_merge_huc_pdfs(self, message: dict):
         """
         Merge per-point daily PDFs into one HUC batch report.
+        Regenerates each day under analysis_types when provided.
         """
         try:
             required = ["output_dirs", "base_output_dir", "huc_id"]
@@ -105,6 +106,9 @@ class PlotterAdapter:
                 output_dirs=message["output_dirs"],
                 base_output_dir=message["base_output_dir"],
                 huc_id=message["huc_id"],
+                data_dir=message.get("data_dir", "data"),
+                analysis_types=message.get("analysis_types"),
+                debug_behavior=message.get("debug_behavior", False),
             )
             return None
 

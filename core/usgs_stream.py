@@ -238,7 +238,7 @@ def download_usgs_flow(
             # Final safety: if the exact analysis day is still missing,
             # log and return empty so the caller does not silently skip
             if result.empty or result["time"].max() < required_end:
-                logger.warning(
+                logger.debug(
                     f"After download, gage {gage_id} still lacks data for {end_date}"
                 )
                 return pd.DataFrame()
@@ -256,7 +256,7 @@ def download_usgs_flow(
             (cached_df["time"] >= required_start) & (cached_df["time"] <= required_end)
         ]
         if not fallback.empty:
-            logger.warning(
+            logger.debug(
                 f"Using incomplete/stale cache for {gage_id} "
                 f"(ends {cached_df['time'].max().date()})"
             )
