@@ -258,7 +258,7 @@ def _plot_precip_page(
     debug_behavior: bool = False,
 ):
     """Creates the precipitation page for the PDF report."""
-    if debug_behavior:
+    if not debug_behavior:
         usgs_data = None
         nwm_data = None
 
@@ -271,7 +271,6 @@ def _plot_precip_page(
     stored_graph_end = datetime.strptime(precip_data["graph_end"], "%Y-%m-%d")
 
     if not debug_behavior:
-        # water-year window: previous WY start through stored graph_end
         if obs_date.month >= 10:
             current_wy_start = datetime(obs_date.year, 10, 1)
         else:
@@ -290,10 +289,9 @@ def _plot_precip_page(
     lat = precip_data["lat"]
     lon = precip_data["lon"]
     elev = precip_data.get("elev", 0.0)
-    stations = precip_data.get("local_stations_info", [])
-    is_gridded = stations and stations[0].get("id") == "GRIDDED"
+    stations = precip_data.get("local_stations_info", []) or []
+    is_gridded = bool(stations and stations[0].get("id") == "GRIDDED")
 
-    # Color definitions
     light_green = (0.5, 0.8, 0.5)
     light_blue = (0.4, 0.5, 0.8)
     light_red = (0.8, 0.5, 0.5)
@@ -306,19 +304,33 @@ def _plot_precip_page(
     fig = plt.figure(figsize=(17, 11), dpi=140)
     fig.set_facecolor("0.77")
 
-    # Define layout
-    ax1 = plt.subplot2grid((9, 10), (0, 0), colspan=10, rowspan=6)  # Main graph
-    ax2 = plt.subplot2grid((9, 10), (6, 3), colspan=7, rowspan=2)  # Rain table
-    ax3 = plt.subplot2grid((9, 10), (6, 0), colspan=3, rowspan=2)  # Description table
-    ax4 = plt.subplot2grid((9, 10), (8, 3), colspan=7, rowspan=1)  # Station table
+    # ------------------------------------------------------------------
+    # Figure-fraction layout — graph-first; lower band centered on page
+    #   Graph:       y 0.38–0.97
+    #   Middle band: y 0.24–0.34   description | rain
+    #   Bottom band: y 0.012–0.24  logo        | stations
+    #   Lower band left/right margins equal (0.04)
+    # ------------------------------------------------------------------
+    _m = 0.04  # page margin each side for lower band
+    _left_w = 0.29  # description + logo column
+    _gap = 0.02  # column gutter
+    _right_w = 1.0 - 2 * _m - _left_w - _gap  # → 0.61
+    _right_x = _m + _left_w + _gap  # → 0.35
 
-    for ax in [ax2, ax3, ax4]:
+    ax1 = fig.add_axes([0.05, 0.38, 0.935, 0.59])
+    ax3 = fig.add_axes([_m, 0.24, _left_w, 0.10])
+    ax2 = fig.add_axes([_right_x, 0.24, _right_w, 0.10])
+    ax_logo = fig.add_axes([_m, 0.012, _left_w, 0.228])
+    ax4 = fig.add_axes([_right_x, 0.012, _right_w, 0.228])
+
+    for ax in (ax2, ax3, ax4, ax_logo):
         ax.axis("off")
+        ax.set_facecolor(fig.get_facecolor())
 
-    # Main graph (ax1)
+    # ---- Main graph ----
     ax1.xaxis.set_major_locator(mdates.MonthLocator())
     ax1.xaxis.set_major_formatter(mdates.DateFormatter("%b\n%Y"))
-    ax1.tick_params(axis="x", which="major", colors="black")
+    ax1.tick_params(axis="x", which="major", colors="black", labelsize=9)
     ax1.plot(
         daily_precip[graph_start:graph_end].index,
         daily_precip[graph_start:graph_end].values,
@@ -353,34 +365,24 @@ def _plot_precip_page(
     ax1.set_ylim(ymin=0, ymax=y_max_val)
     ax1.set_xlim([pd.Timestamp(graph_start), pd.Timestamp(graph_end)])
 
-    # Graph annotation section
     date_range_days = (graph_end - graph_start).days
     for days_prior in [0, 30, 60]:
         arrow_date = obs_date - timedelta(days=days_prior)
         if not (graph_start <= arrow_date <= graph_end):
             continue
-
         y_value = rolling_total.get(arrow_date)
         if y_value is not None and pd.notna(y_value):
-            # Determine vertical position
             vertical_offset = -30 if y_value > y_max_val * 0.85 else 30
-
-            # Determine horizontal position based on date location
             days_from_start = (arrow_date - graph_start).days
             position_ratio = (
                 days_from_start / date_range_days if date_range_days > 0 else 0.5
             )
-
-            if position_ratio < 0.2:  # Left side of graph
-                horizontal_align = "left"
-                horizontal_offset = 15
-            elif position_ratio > 0.8:  # Right side of graph
-                horizontal_align = "right"
-                horizontal_offset = -15
-            else:  # Center
-                horizontal_align = "center"
-                horizontal_offset = 0
-
+            if position_ratio < 0.2:
+                horizontal_align, horizontal_offset = "left", 15
+            elif position_ratio > 0.8:
+                horizontal_align, horizontal_offset = "right", -15
+            else:
+                horizontal_align, horizontal_offset = "center", 0
             ax1.annotate(
                 arrow_date.strftime("%Y-%m-%d"),
                 xy=(arrow_date, y_value),
@@ -398,20 +400,20 @@ def _plot_precip_page(
             )
 
     ax1.legend(loc="upper right")
-    ax1.set_ylabel("Rainfall (Inches)", fontsize=20)
+    ax1.set_ylabel("Rainfall (Inches)", fontsize=18)
     title = (
         "nClimGrid-Daily Data"
         if is_gridded
         else "Daily Global Historical Climatology Network"
     )
     ax1.set_title(
-        f"Antecedent Precipitation vs Normal Range based on {title}", fontsize=20
+        f"Antecedent Precipitation vs Normal Range based on {title}", fontsize=18
     )
 
-    # Rain table (ax2)
+    # ---- Rain table ----
     summary = precip_data.get("antecedent_score_summary", {})
     result, total_score = summary.get("condition"), summary.get("total_score")
-    if result is None:  # Fallback for older data
+    if result is None:
         result, total_score = _compute_precip_condition(precip_data)
 
     rain_table_vals = [
@@ -427,13 +429,11 @@ def _plot_precip_page(
         ]
     ]
     rain_colors = [[light_grey] * 8]
-
     for days_prior, weight in [(0, 3), (30, 2), (60, 1)]:
         p_date = obs_date - timedelta(days=days_prior)
         obs_val = rolling_total.get(p_date)
         low_val = normal_low.get(p_date)
         high_val = normal_high.get(p_date)
-
         if any(pd.isna(v) or v is None for v in [obs_val, low_val, high_val]):
             condition, c_val = "Data Missing", 0
         elif obs_val > high_val:
@@ -442,7 +442,6 @@ def _plot_precip_page(
             condition, c_val = "Dry", 1
         else:
             condition, c_val = "Normal", 2
-
         prod = c_val * weight
         rain_table_vals.append(
             [
@@ -468,14 +467,18 @@ def _plot_precip_page(
     )
     rain_colors.append([white] * 7 + [final_color])
 
-    ax2.table(
+    t2 = ax2.table(
         cellText=rain_table_vals,
         cellColours=rain_colors,
-        colWidths=[0.112, 0.111, 0.111, 0.120, 0.135, 0.114, 0.1, 0.18],
+        cellLoc="center",
         loc="center",
-    ).set_fontsize(10)
+        colWidths=[0.12, 0.11, 0.11, 0.11, 0.14, 0.12, 0.11, 0.18],
+    )
+    t2.set_fontsize(9.5)
+    t2.auto_set_font_size(False)
+    t2.scale(1.0, 1.3)
 
-    # Description table (ax3)
+    # ---- Description table ----
     desc_vals = [
         ["Coordinates", f"{lat:.4f}, {lon:.4f}"],
         ["Observation Date", obs_date.strftime("%Y-%m-%d")],
@@ -496,81 +499,84 @@ def _plot_precip_page(
         desc_vals.append(["WIMP Condition", wimp_data["wimp_condition"]])
         desc_colors.append([light_grey, white])
 
-    ax3.table(
+    t3 = ax3.table(
         cellText=desc_vals,
-        colWidths=[0.42, 0.54],
+        colWidths=[0.45, 0.55],
         cellColours=desc_colors,
-        loc="center left",
-    ).set_fontsize(9)
+        cellLoc="center",
+        loc="center",
+    )
+    t3.set_fontsize(9)
+    t3.auto_set_font_size(False)
+    t3.scale(1.0, 1.3)
 
-    # Station table (ax4)
-    if not is_gridded:
+    # ---- Station table: ALL stations ----
+    # Short lists → natural row height, pinned to top of ax4 (no tall stretched cells).
+    # Long lists  → bbox-locked inside ax4 so they cannot climb into the rain table.
+    if not is_gridded and stations:
         station_vals = [
             ["Weather Station Name", "Dist (mi)", "Days Normal", "Days Antecedent"]
         ]
         station_colors = [[light_grey] * 4]
-        for s in stations[:5]:
+        for s in stations:
             station_vals.append(
                 [
-                    str(s.get("name", ""))[:28],
+                    str(s.get("name", ""))[:32],
                     f"{s.get('distance', 0):.1f}",
                     str(s.get("days_normal", 0)),
                     str(s.get("days_antecedent", 0)),
                 ]
             )
             station_colors.append([white] * 4)
-        ax4.table(
-            cellText=station_vals,
-            cellColours=station_colors,
-            loc="center",
-        ).set_fontsize(10)
 
-    plt.subplots_adjust(
-        wspace=0.0, hspace=0.08, left=0.047, bottom=0.08, top=0.968, right=0.99
-    )
+        n_rows = len(station_vals)  # header + data
 
-    # Logo: measure drawn tables, fill the leftover cell against their edges
+        if n_rows <= 7:
+            # 1–6 stations: compact table at top of the cell
+            t4 = ax4.table(
+                cellText=station_vals,
+                cellColours=station_colors,
+                cellLoc="center",
+                loc="upper center",
+                colWidths=[0.42, 0.16, 0.21, 0.21],
+            )
+            t4.set_fontsize(9.0)
+            t4.auto_set_font_size(False)
+            t4.scale(1.0, 1.35)
+        elif n_rows <= 11:
+            t4 = ax4.table(
+                cellText=station_vals,
+                cellColours=station_colors,
+                cellLoc="center",
+                loc="upper center",
+                colWidths=[0.42, 0.16, 0.21, 0.21],
+            )
+            t4.set_fontsize(8.5)
+            t4.auto_set_font_size(False)
+            t4.scale(1.0, 1.15)
+        else:
+            # Long list: lock to axes so it cannot overlap the rain table
+            fs = 7.0 if n_rows <= 15 else (6.0 if n_rows <= 18 else 5.0)
+            t4 = ax4.table(
+                cellText=station_vals,
+                cellColours=station_colors,
+                cellLoc="center",
+                bbox=[0.0, 0.0, 1.0, 1.0],
+                colWidths=[0.42, 0.16, 0.21, 0.21],
+            )
+            t4.set_fontsize(fs)
+            t4.auto_set_font_size(False)
+
+    # ---- Logo ----
     try:
         logo_file = os.path.join(data_dir, "RD_3_9.png")
         logo = plt.imread(logo_file)
-
-        fig.canvas.draw()
-        renderer = fig.canvas.get_renderer()
-        inv = fig.transFigure.inverted()
-
-        def _fig_box(artist):
-            bb = artist.get_window_extent(renderer)
-            (x0, y0), (x1, y1) = inv.transform(
-                np.array([[bb.x0, bb.y0], [bb.x1, bb.y1]])
-            )
-            return x0, y0, x1, y1
-
-        gap = 0.004  # ~0.7 mm at 17x11 in — razor thin
-        left = ax3.get_position().x0
-        bottom = 0.006
-
-        dx0, dy0, dx1, dy1 = _fig_box(ax3.tables[0])
-        top = dy0 - gap
-
-        if ax4.tables:
-            sx0, sy0, sx1, sy1 = _fig_box(ax4.tables[0])
-            right = sx0 - gap
-        elif ax2.tables:
-            rx0, ry0, rx1, ry1 = _fig_box(ax2.tables[0])
-            right = rx0 - gap
-        else:
-            right = 0.45
-
-        width = max(0.05, right - left)
-        height = max(0.05, top - bottom)
-
-        ax_logo = fig.add_axes([left, bottom, width, height])
-        ax_logo.set_facecolor(fig.get_facecolor())
-        ax_logo.imshow(logo, interpolation="bilinear")
-        ax_logo.set_aspect("equal")
-        ax_logo.set_anchor("SW")
-        ax_logo.axis("off")
-        ax_logo.set_zorder(10)
+        ax_logo.imshow(logo, interpolation="bilinear", aspect="equal")
+        ax_logo.set_anchor("C")
+        ax_logo.set_xticks([])
+        ax_logo.set_yticks([])
+        for spine in ax_logo.spines.values():
+            spine.set_visible(False)
     except Exception as e:
         logger.warning(
             "Could not load logo from %s: %s",
