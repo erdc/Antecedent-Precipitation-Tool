@@ -292,7 +292,7 @@ def download_nwm_subprocess(comid_list: list, nwm_uri: str, cache_dir: str) -> i
 
     pivoted.to_csv(csv_path)
     logger.info(f"NWM historic data cached: {csv_path}")
-    return 0
+    return 1
 
 
 def download_nwm_historic(
